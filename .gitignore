@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.local
+
+# Node / frontend (added in Phase 2)
+node_modules/
+dist/
+.vite/
+
+# OS / editor
+.DS_Store
+*.log
+
+# ignored by me
+ai-macro-logger-plan.md
+supabase
