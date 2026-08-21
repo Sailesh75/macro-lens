@@ -27,6 +27,7 @@ class MealItemCandidate(BaseModel):
 
 
 class IdentifyResponse(BaseModel):
+    meal_id: str
     items: list[MealItemCandidate]
 
 
@@ -37,6 +38,7 @@ class GramsEntry(BaseModel):
 
 
 class CalculateRequest(BaseModel):
+    meal_id: str
     items: list[GramsEntry]
 
 
