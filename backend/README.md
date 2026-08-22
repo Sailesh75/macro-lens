@@ -1,7 +1,7 @@
 # Backend — Phase 1
 
-The vision → USDA → grams → macros pipeline, now persisted to Supabase.
-Photo storage (S3) isn't wired in yet. See
+The full photo → S3 → vision → USDA → grams → macros pipeline, persisted to
+Supabase. Phase 1 is complete. See
 [../ai-macro-logger-plan.md](../ai-macro-logger-plan.md) for the full plan.
 
 ## Setup
@@ -21,7 +21,7 @@ Fill in `.env`:
 3. **`SUPABASE_URL`** / **`SUPABASE_SERVICE_KEY`** — create a project at supabase.com, run `supabase/schema.sql` in its SQL Editor, then Project Settings → API. Use the **`service_role`** key (sometimes labeled "Secret key"), not `anon`/"Publishable key" — the service key is required for admin operations and to bypass row-level security from trusted backend code.
 4. **`TEST_USER_ID`** — run `.venv\Scripts\python.exe scripts\create_test_user.py` once `SUPABASE_SERVICE_KEY` is set; it creates a placeholder user and prints the id to paste in here. Stands in for real login until Phase 2 wires actual Supabase Auth.
 
-Leave the AWS lines commented out until the S3 step (`app/pipeline/storage.py` is written but not wired into the routes yet).
+5. **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`** / **`AWS_REGION`** / **`S3_BUCKET_NAME`** — an IAM user scoped to just your bucket (PutObject/GetObject/DeleteObject only, see git history or ask if you need the policy JSON again), and the bucket itself with public access blocked.
 
 ## Run
 
@@ -40,9 +40,9 @@ test the endpoints without a frontend yet) at http://127.0.0.1:8000/docs.
 
 ## What's not here yet
 
-- Photo storage (S3) — `app/pipeline/storage.py` exists but isn't called from the routes; `meals.image_url` stays null until it is
 - The LangGraph retry/human-in-the-loop graph — `/identify` and `/calculate`
   are two plain endpoints standing in for what becomes a graph in Phase 3
 - Real auth — every meal is attached to one hardcoded `TEST_USER_ID` until Phase 2's frontend wires actual Supabase Auth login
+- Presigned GET URLs for displaying photos back — the bucket blocks public access on purpose, so `meals.image_url` isn't browser-viewable yet as-is; that gets solved when Phase 2 needs to actually show photos
 
 Each of those gets wired in as we go — see the roadmap in the plan doc.
