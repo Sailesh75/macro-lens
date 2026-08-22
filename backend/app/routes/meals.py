@@ -1,6 +1,5 @@
-"""Phase 1 endpoints: vision -> USDA -> grams -> macros, now persisted to
-Supabase. Photo storage (S3) isn't wired in yet — image_url stays null until
-that step.
+"""Phase 1 endpoints: photo -> S3 -> vision -> USDA -> grams -> macros, all
+persisted to Supabase. This closes out Phase 1.
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile
@@ -8,6 +7,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from app import db
 from app.config import get_settings
 from app.pipeline.macros import compute_item_macros
+from app.pipeline.storage import upload_photo
 from app.pipeline.usda import get_match_by_fdc_id, match_food
 from app.pipeline.vision import identify_foods
 from app.schemas import (
@@ -40,7 +40,9 @@ async def identify(photo: UploadFile) -> IdentifyResponse:
     if not image_bytes:
         raise HTTPException(400, "Uploaded file is empty")
 
-    identified = identify_foods(image_bytes, mime_type=photo.content_type or "image/jpeg")
+    content_type = photo.content_type or "image/jpeg"
+    image_url = upload_photo(image_bytes, content_type=content_type)
+    identified = identify_foods(image_bytes, mime_type=content_type)
 
     candidates: list[MealItemCandidate] = []
     for item in identified:
@@ -55,7 +57,7 @@ async def identify(photo: UploadFile) -> IdentifyResponse:
             )
         )
 
-    meal_id = db.create_meal(user_id=user_id, image_url=None)
+    meal_id = db.create_meal(user_id=user_id, image_url=image_url)
     db.create_meal_items(meal_id, candidates)
 
     return IdentifyResponse(meal_id=meal_id, items=candidates)
