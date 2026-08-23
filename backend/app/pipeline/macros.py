@@ -17,3 +17,16 @@ def compute_item_macros(name: str, grams: float, usda: UsdaMatch) -> ComputedIte
         carbs=round(usda.carbs_per_100g * factor, 1),
         fat=round(usda.fat_per_100g * factor, 1),
     )
+
+
+def sum_macros(items: list[dict]) -> dict[str, float]:
+    """items: raw meal_items DB rows. Missing/null macros (e.g. an item that
+    never got USDA-matched, so was never calculated) count as 0 rather than
+    breaking the sum.
+    """
+    return {
+        "calories": round(sum(i.get("calories") or 0 for i in items), 1),
+        "protein": round(sum(i.get("protein") or 0 for i in items), 1),
+        "carbs": round(sum(i.get("carbs") or 0 for i in items), 1),
+        "fat": round(sum(i.get("fat") or 0 for i in items), 1),
+    }
