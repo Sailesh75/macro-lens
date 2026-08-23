@@ -43,6 +43,54 @@ def create_meal_items(meal_id: str, items: list) -> list[dict]:
     return result.data
 
 
+def list_meals(user_id: str) -> list[dict]:
+    """Most recent first, each meal with its items embedded (single query via
+    PostgREST's foreign-table embedding, not N+1 lookups).
+    """
+    result = (
+        get_supabase()
+        .table("meals")
+        .select("*, meal_items(*)")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data
+
+
+def get_meal(meal_id: str, user_id: str) -> dict | None:
+    """Scoped to user_id too, not just meal_id — so one user can't fetch
+    another's meal by guessing/enumerating ids.
+    """
+    result = (
+        get_supabase()
+        .table("meals")
+        .select("*, meal_items(*)")
+        .eq("id", meal_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+def get_meals_in_range(user_id: str, start_iso: str, end_iso: str) -> list[dict]:
+    """Only `done` meals — a meal still awaiting grams input has no macros
+    to contribute to a daily total yet.
+    """
+    result = (
+        get_supabase()
+        .table("meals")
+        .select("*, meal_items(*)")
+        .eq("user_id", user_id)
+        .eq("status", "done")
+        .gte("created_at", start_iso)
+        .lt("created_at", end_iso)
+        .execute()
+    )
+    return result.data
+
+
 def finalize_meal_items(meal_id: str, computed_items: list) -> None:
     """computed_items: list of ComputedItem, matched back to rows by food_name.
     Writes grams + macros for each item and marks the meal done.

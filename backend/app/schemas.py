@@ -57,3 +57,43 @@ class CalculateResponse(BaseModel):
     total_protein: float
     total_carbs: float
     total_fat: float
+
+
+class MealItemRow(BaseModel):
+    """Mirrors a meal_items DB row as-is — used for history/detail views."""
+
+    id: str
+    food_name: str
+    fdc_id: str | None = None
+    suggested_grams: float | None = None
+    grams: float | None = None
+    calories: float | None = None
+    protein: float | None = None
+    carbs: float | None = None
+    fat: float | None = None
+    match_confidence: float | None = None
+
+
+class MealSummary(BaseModel):
+    id: str
+    image_url: str | None = None
+    created_at: str
+    status: str
+    items: list[MealItemRow]
+    total_calories: float
+    total_protein: float
+    total_carbs: float
+    total_fat: float
+
+
+class MealListResponse(BaseModel):
+    meals: list[MealSummary]
+
+
+class DailyStatsResponse(BaseModel):
+    date: str
+    meal_count: int
+    total_calories: float
+    total_protein: float
+    total_carbs: float
+    total_fat: float

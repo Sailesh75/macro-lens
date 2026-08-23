@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     # Later phases (Supabase persistence, S3 storage) — optional until wired in
     supabase_url: str = ""
     supabase_service_key: str = ""
-    # Temporary stand-in for real login (Phase 2 wires actual Supabase Auth).
-    # Created by scripts/create_test_user.py.
-    test_user_id: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_region: str = ""
