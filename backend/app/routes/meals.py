@@ -1,12 +1,12 @@
-"""Phase 1 endpoints: photo -> S3 -> vision -> USDA -> grams -> macros, all
-persisted to Supabase. This closes out Phase 1.
+"""Phase 1: photo -> S3 -> vision -> USDA -> grams -> macros, persisted to
+Supabase. Phase 2: list/detail views over what's been logged.
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app import db
-from app.config import get_settings
-from app.pipeline.macros import compute_item_macros
+from app.auth import get_current_user_id
+from app.pipeline.macros import compute_item_macros, sum_macros
 from app.pipeline.storage import upload_photo
 from app.pipeline.usda import get_match_by_fdc_id, match_food
 from app.pipeline.vision import identify_foods
@@ -15,27 +15,37 @@ from app.schemas import (
     CalculateResponse,
     IdentifyResponse,
     MealItemCandidate,
+    MealItemRow,
+    MealListResponse,
+    MealSummary,
 )
 
 router = APIRouter(prefix="/meals", tags=["meals"])
 
 
-def _current_user_id() -> str:
-    """Stand-in for real auth (Phase 2). See scripts/create_test_user.py."""
-    user_id = get_settings().test_user_id
-    if not user_id:
-        raise HTTPException(500, "TEST_USER_ID not set in .env — run scripts/create_test_user.py first")
-    return user_id
+def _to_meal_summary(meal: dict) -> MealSummary:
+    items = meal.get("meal_items") or []
+    totals = sum_macros(items)
+    return MealSummary(
+        id=meal["id"],
+        image_url=meal.get("image_url"),
+        created_at=meal["created_at"],
+        status=meal["status"],
+        items=[MealItemRow(**item) for item in items],
+        total_calories=totals["calories"],
+        total_protein=totals["protein"],
+        total_carbs=totals["carbs"],
+        total_fat=totals["fat"],
+    )
 
 
 @router.post("/identify", response_model=IdentifyResponse)
-async def identify(photo: UploadFile) -> IdentifyResponse:
+async def identify(photo: UploadFile, user_id: str = Depends(get_current_user_id)) -> IdentifyResponse:
     """Step 1+2+3: identify food items in the photo, match each to USDA, and
     look up a suggested portion from this user's history. Saves a `meals` row
     plus one `meal_items` row per item (grams still null — the user fills
     those in next via /calculate).
     """
-    user_id = _current_user_id()
     image_bytes = await photo.read()
     if not image_bytes:
         raise HTTPException(400, "Uploaded file is empty")
@@ -64,13 +74,12 @@ async def identify(photo: UploadFile) -> IdentifyResponse:
 
 
 @router.post("/calculate", response_model=CalculateResponse)
-async def calculate(payload: CalculateRequest) -> CalculateResponse:
+async def calculate(payload: CalculateRequest, user_id: str = Depends(get_current_user_id)) -> CalculateResponse:
     """Step 5+6: given user-entered grams per item, compute macros, write
     them back onto the meal's rows, mark the meal done, and update this
     user's per-food running average (the personalization signal — see
     plan §6, this is a pre-fill memory, never a correction of an AI guess).
     """
-    user_id = _current_user_id()
     computed = []
     for entry in payload.items:
         try:
@@ -90,3 +99,18 @@ async def calculate(payload: CalculateRequest) -> CalculateResponse:
         total_carbs=round(sum(i.carbs for i in computed), 1),
         total_fat=round(sum(i.fat for i in computed), 1),
     )
+
+
+@router.get("", response_model=MealListResponse)
+async def list_meals(user_id: str = Depends(get_current_user_id)) -> MealListResponse:
+    """Meal history — most recent first, each with its items and totals."""
+    meals = db.list_meals(user_id)
+    return MealListResponse(meals=[_to_meal_summary(m) for m in meals])
+
+
+@router.get("/{meal_id}", response_model=MealSummary)
+async def get_meal(meal_id: str, user_id: str = Depends(get_current_user_id)) -> MealSummary:
+    meal = db.get_meal(meal_id, user_id)
+    if not meal:
+        raise HTTPException(404, "Meal not found")
+    return _to_meal_summary(meal)
