@@ -102,3 +102,49 @@ button:disabled {
   margin: 0.25rem 0 0;
   font-size: 0.9rem;
 }
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.top-bar h1 {
+  margin: 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 280px;
+}
+
+.auth-form input {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #333;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.google-button {
+  background: white;
+  color: #1a1a1a;
+  border: 1px solid #ccc;
+}
+
+.success {
+  color: #1e7b34;
+  font-weight: 500;
+}

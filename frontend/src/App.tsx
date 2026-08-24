@@ -1,13 +1,19 @@
+import type { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import "./App.css";
 import { calculateMeal, getDailyStats, identifyMeal, listMeals } from "./api";
+import { Auth } from "./Auth";
 import { DailySummary } from "./DailySummary";
 import { MealHistory } from "./MealHistory";
+import { supabase } from "./supabaseClient";
 import type { CalculateResponse, DailyStatsResponse, IdentifyResponse, MealSummary } from "./types";
 
 type Status = "idle" | "identifying" | "identified" | "calculating" | "done" | "error";
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [photo, setPhoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
@@ -39,8 +45,23 @@ function App() {
   }
 
   useEffect(() => {
-    refreshHistoryAndStats();
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (session) refreshHistoryAndStats();
+  }, [session]);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -103,9 +124,26 @@ function App() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <div className="page">
+        <p className="muted">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Auth />;
+  }
+
   return (
     <div className="page">
-      <h1>AI Macro Logger</h1>
+      <div className="top-bar">
+        <h1>AI Macro Logger</h1>
+        <button type="button" className="link-button" onClick={handleLogout}>
+          Log out ({session.user.email})
+        </button>
+      </div>
       <p className="subtitle">
         Upload a meal photo. The AI identifies what's on your plate — you always enter how much.
       </p>

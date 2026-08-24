@@ -5,12 +5,20 @@ Sends the meal photo to Gemini and asks ONLY "what food items are here", never
 """
 
 import json
+import time
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from app.config import get_settings
 from app.schemas import IdentifiedItem
+
+# Gemini occasionally returns 503 "high demand" during load spikes — the
+# SDK's own built-in retry (via tenacity) already tries a few times internally
+# and gives up fast. This outer retry gives a real overload a longer chance
+# to clear, same pattern as USDA's flakiness fix in pipeline/usda.py.
+_MAX_ATTEMPTS = 3
 
 IDENTIFY_PROMPT = """You are looking at a photo of a meal. List each distinct food item you can see.
 
@@ -32,17 +40,29 @@ def identify_foods(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[Id
         raise RuntimeError("GEMINI_API_KEY is not set — copy backend/.env.example to backend/.env and fill it in.")
 
     client = genai.Client(api_key=settings.gemini_api_key)
-    response = client.models.generate_content(
-        model=settings.gemini_model,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            IDENTIFY_PROMPT,
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.2,
-        ),
-    )
+
+    last_error: Exception | None = None
+    response = None
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_model,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                    IDENTIFY_PROMPT,
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
+            )
+            break
+        except genai_errors.ServerError as e:
+            last_error = e
+            if attempt < _MAX_ATTEMPTS - 1:
+                time.sleep(2 * (attempt + 1))
+    if response is None:
+        raise last_error
 
     raw = response.text or "[]"
     try:
