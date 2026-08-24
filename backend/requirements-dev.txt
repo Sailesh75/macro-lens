@@ -1,0 +1,3 @@
+# Dev/test-only — not needed to run the app, only to develop/test it.
+-r requirements.txt
+pytest>=8.0
