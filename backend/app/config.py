@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # Phase 1: vision + USDA lookup
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
     usda_api_key: str = ""
 
     # Later phases (Supabase persistence, S3 storage) — optional until wired in
