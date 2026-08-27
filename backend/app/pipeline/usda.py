@@ -107,23 +107,38 @@ def get_match_by_fdc_id(fdc_id: str) -> UsdaMatch:
 
 
 def match_food(item_name: str) -> UsdaMatch | None:
-    """Take the top search result for now. Ambiguous-match disambiguation
-    (LLM-assisted pick among multiple candidates) is a Phase 3 refinement
-    once the graph's check_matches/retry loop exists — see plan §4.
+    """Phase 4: disambiguates among multiple USDA candidates via an LLM call
+    instead of blindly taking the top search result — the root cause of the
+    "steamed dumplings" -> "Stew, dumpling with mutton (Navajo)" mismatch in
+    learning.md. With exactly one candidate, skips the LLM call entirely
+    (nothing to disambiguate, no point spending the API call).
 
     Deliberately swallows USDA errors (after retries already failed) and
     returns None instead of raising — USDA's API is known to be flaky, and
     one item failing to match shouldn't take down the whole /meals/identify
-    request when the other items matched fine. The caller treats None the
-    same as "no match found."
+    request when the other items matched fine. The caller (and the graph's
+    check_matches conditional) treats None the same as "no match found."
     """
+    # Imported here, not at module level, to avoid usda.py depending on the
+    # Gemini client existing/being configured for tests that never hit the
+    # multi-candidate path.
+    from app.pipeline.vision import disambiguate_match
+
     try:
         candidates = search_food(item_name)
         if not candidates:
             return None
 
-        top = candidates[0]
-        fdc_id = str(top["fdcId"])
+        if len(candidates) == 1:
+            chosen = candidates[0]
+        else:
+            descriptions = [c.get("description", "") for c in candidates]
+            best_index = disambiguate_match(item_name, descriptions)
+            if best_index is None:
+                return None
+            chosen = candidates[best_index]
+
+        fdc_id = str(chosen["fdcId"])
         detail = get_food_detail(fdc_id)
     except httpx.HTTPStatusError as e:
         print(f"[usda] match_food('{item_name}') failed after retries, returning no match: {e}")
@@ -132,7 +147,7 @@ def match_food(item_name: str) -> UsdaMatch | None:
     macros = _extract_macros_per_100g(detail)
     return UsdaMatch(
         fdc_id=fdc_id,
-        matched_description=top.get("description", item_name),
+        matched_description=chosen.get("description", item_name),
         calories_per_100g=macros["calories_per_100g"],
         protein_per_100g=macros["protein_per_100g"],
         carbs_per_100g=macros["carbs_per_100g"],

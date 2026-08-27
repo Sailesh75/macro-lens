@@ -1,20 +1,21 @@
 """Phase 1: photo -> S3 -> vision -> USDA -> grams -> macros, persisted to
-Supabase. Phase 2: list/detail views over what's been logged.
+Supabase. Phase 2: list/detail views over what's been logged. Phase 4: the
+identify step now runs through the LangGraph graph in app/graph.py instead
+of a plain inline loop.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app import db
 from app.auth import get_current_user_id
+from app.graph import run_meal_graph
 from app.pipeline.macros import compute_item_macros, sum_macros
 from app.pipeline.storage import upload_photo
-from app.pipeline.usda import get_match_by_fdc_id, match_food
-from app.pipeline.vision import identify_foods
+from app.pipeline.usda import get_match_by_fdc_id
 from app.schemas import (
     CalculateRequest,
     CalculateResponse,
     IdentifyResponse,
-    MealItemCandidate,
     MealItemRow,
     MealListResponse,
     MealSummary,
@@ -41,10 +42,10 @@ def _to_meal_summary(meal: dict) -> MealSummary:
 
 @router.post("/identify", response_model=IdentifyResponse)
 async def identify(photo: UploadFile, user_id: str = Depends(get_current_user_id)) -> IdentifyResponse:
-    """Step 1+2+3: identify food items in the photo, match each to USDA, and
-    look up a suggested portion from this user's history. Saves a `meals` row
-    plus one `meal_items` row per item (grams still null — the user fills
-    those in next via /calculate).
+    """Runs the identify_foods -> lookup_usda -> check_matches (-> retry) ->
+    suggest_defaults graph (app/graph.py), then saves a `meals` row plus one
+    `meal_items` row per item (grams still null — the user fills those in
+    next via /calculate).
     """
     image_bytes = await photo.read()
     if not image_bytes:
@@ -52,20 +53,7 @@ async def identify(photo: UploadFile, user_id: str = Depends(get_current_user_id
 
     content_type = photo.content_type or "image/jpeg"
     image_url = upload_photo(image_bytes, content_type=content_type)
-    identified = identify_foods(image_bytes, mime_type=content_type)
-
-    candidates: list[MealItemCandidate] = []
-    for item in identified:
-        usda = match_food(item.name)
-        suggested = db.get_suggested_grams(user_id, item.name) if usda else None
-        candidates.append(
-            MealItemCandidate(
-                name=item.name,
-                confidence=item.confidence,
-                usda=usda,
-                suggested_grams=suggested,
-            )
-        )
+    candidates = run_meal_graph(image_bytes, content_type, user_id)
 
     meal_id = db.create_meal(user_id=user_id, image_url=image_url)
     db.create_meal_items(meal_id, candidates)
