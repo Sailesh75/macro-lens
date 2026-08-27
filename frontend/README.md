@@ -1,9 +1,21 @@
-# Frontend — Phase 2 (in progress)
+# Frontend — Phases 1-3 complete
 
 React + TypeScript + Vite. Real Supabase Auth (email/password + Google
 OAuth), meal history, daily totals, and the core "log a meal" flow: upload a
 photo → see identified items (with USDA matches + any remembered grams
 pre-filled) → enter/confirm grams → see computed macros.
+
+## Deployed environments
+
+| Environment | Branch | URL |
+|---|---|---|
+| Staging | `staging` | https://frontend-git-staging-saileshs-projects-d22c8616.vercel.app |
+| Production | `master` | https://frontend-sigma-liart-68.vercel.app |
+
+Both point at their matching Render backend (see `backend/README.md`) and
+the same shared Supabase project. Vercel's Deployment Protection (a login
+wall on preview URLs) is turned off so staging is testable without a Vercel
+account.
 
 ## Setup
 
@@ -48,4 +60,3 @@ with Google" if that's configured.
 
 - Weekly macro summary (plan §8 mentions it; only daily is built)
 - Any styling framework — plain CSS on purpose, matching the plan's "keep the grams-entry UI simple" note
-- A real deployed origin — CORS and OAuth redirect URIs are currently configured for local dev only
