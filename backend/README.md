@@ -1,8 +1,20 @@
-# Backend — Phase 1 complete, Phase 2 in progress
+# Backend — Phases 1-3 complete
 
 The full photo → S3 → vision → USDA → grams → macros pipeline, persisted to
-Supabase, with real auth and history/summary endpoints. See
+Supabase, with real auth, history/summary endpoints, tests, and CI/CD. See
 [../ai-macro-logger-plan.md](../ai-macro-logger-plan.md) for the full plan.
+
+## Deployed environments
+
+| Environment | Branch | URL |
+|---|---|---|
+| Staging | `staging` | https://ai-macro-logger.onrender.com |
+| Production | `master` | https://ai-macro-logger-prod.onrender.com |
+
+Both Render services build from the `backend` subdirectory and read the same
+environment variables described below. Both currently point at the **same**
+Supabase project (see plan §8 Phase 3 for why) — staging and production share
+a database and Auth user pool, a deliberate cost tradeoff, not an oversight.
 
 ## Setup
 
@@ -68,8 +80,9 @@ setup/fixtures) and anything in the future LangGraph graph.
 ## What's not here yet
 
 - The LangGraph retry/human-in-the-loop graph — `/identify` and `/calculate`
-  are two plain endpoints standing in for what becomes a graph in Phase 3
+  are two plain endpoints standing in for what becomes a graph in Phase 4
 - Weekly stats (plan §8 mentions it; only daily is built)
 - Presigned GET URLs for displaying photos back — the bucket blocks public access on purpose, so `meals.image_url` isn't browser-viewable yet as-is; that gets solved when the frontend needs to actually show photos
+- CI and CD aren't gated together yet — GitHub Actions runs tests, but Render/Vercel deploy on every push to their watched branch regardless of whether those tests passed. A branch protection rule requiring the CI check before merge would close this; deferred deliberately for now
 
 Each of those gets wired in as we go — see the roadmap in the plan doc.
