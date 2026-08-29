@@ -13,6 +13,7 @@ type Status = "idle" | "identifying" | "identified" | "calculating" | "done" | "
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(false);
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -61,6 +62,7 @@ function App() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    setIsGuest(false);
   }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -132,18 +134,29 @@ function App() {
     );
   }
 
-  if (!session) {
-    return <Auth />;
+  if (!session && !isGuest) {
+    return <Auth onGuestContinue={() => setIsGuest(true)} />;
   }
 
   return (
     <div className="page">
       <div className="top-bar">
         <h1>AI Macro Logger</h1>
-        <button type="button" className="link-button" onClick={handleLogout}>
-          Log out ({session.user.email})
-        </button>
+        {session ? (
+          <button type="button" className="link-button" onClick={handleLogout}>
+            Log out ({session.user.email})
+          </button>
+        ) : (
+          <button type="button" className="link-button" onClick={() => setIsGuest(false)}>
+            Log in
+          </button>
+        )}
       </div>
+      {!session && (
+        <p className="guest-banner">
+          You're trying this out as a guest — nothing here is saved. <button type="button" className="link-button" onClick={() => setIsGuest(false)}>Log in</button> to keep your history and daily totals.
+        </p>
+      )}
       <p className="subtitle">
         Upload a meal photo. The AI identifies what's on your plate — you always enter how much.
       </p>
@@ -263,8 +276,12 @@ function App() {
         </section>
       )}
 
-      <DailySummary stats={dailyStats} loading={statsLoading} />
-      <MealHistory meals={meals} loading={mealsLoading} />
+      {session && (
+        <>
+          <DailySummary stats={dailyStats} loading={statsLoading} />
+          <MealHistory meals={meals} loading={mealsLoading} />
+        </>
+      )}
     </div>
   );
 }

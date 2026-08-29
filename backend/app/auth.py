@@ -24,3 +24,15 @@ def get_current_user_id(authorization: str = Header(default="")) -> str:
         raise HTTPException(401, "Invalid or expired session")
 
     return response.user.id
+
+
+def get_optional_user_id(authorization: str = Header(default="")) -> str | None:
+    """For guest-accessible endpoints (identify/calculate): no header at all
+    means "anonymous guest" (returns None) — but a header that IS present
+    and invalid/expired still raises 401, same as get_current_user_id. Only
+    the absence of an attempt is treated as guest; a failed one is still an
+    error, not silently downgraded.
+    """
+    if not authorization:
+        return None
+    return get_current_user_id(authorization)

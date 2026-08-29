@@ -3,7 +3,11 @@ import { supabase } from "./supabaseClient";
 
 type Mode = "login" | "signup";
 
-export function Auth() {
+interface Props {
+  onGuestContinue: () => void;
+}
+
+export function Auth({ onGuestContinue }: Props) {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -91,6 +95,16 @@ export function Auth() {
         <button type="button" onClick={handleGoogleLogin} className="google-button">
           Continue with Google
         </button>
+
+        <hr />
+
+        <button type="button" className="link-button" onClick={onGuestContinue}>
+          Try it without an account
+        </button>
+        <p className="muted guest-note">
+          Nothing you log this way is saved — no history, no daily totals, and it won't remember
+          your portions next time.
+        </p>
       </section>
     </div>
   );
