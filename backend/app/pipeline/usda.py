@@ -1,9 +1,14 @@
 """Step 2 of the pipeline: lookup_usda.
 
 Matches each identified item name to a USDA FoodData Central entry and pulls
-its per-100g macros. We restrict to Foundation/SR Legacy data types so we get
-plain "chicken breast, cooked" style entries instead of a flood of branded
-products — see plan §4 note on match ambiguity.
+its per-100g macros. Restricted to three dataTypes: Foundation and SR Legacy
+(single-ingredient entries, e.g. "chicken breast, cooked") plus Survey
+(FNDDS) — USDA's dataset of composite/mixed dishes as commonly eaten (e.g.
+"Rice, fried, with chicken" as ONE entry), which is what lets a whole dish
+get logged as one item instead of decomposed into its ingredients. See
+learning.md for why FNDDS was added. Deliberately excludes "Branded" —
+that's commercial products, which would flood results with a specific brand's
+packaged version of a food rather than a generic one.
 """
 
 import time
@@ -54,7 +59,7 @@ def search_food(query: str, page_size: int = 5) -> list[dict]:
             "query": query,
             "api_key": settings.usda_api_key,
             "pageSize": page_size,
-            "dataType": ["Foundation", "SR Legacy"],
+            "dataType": ["Foundation", "SR Legacy", "Survey (FNDDS)"],
         },
     )
     return resp.json().get("foods", [])

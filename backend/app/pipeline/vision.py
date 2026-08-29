@@ -23,11 +23,27 @@ from app.schemas import IdentifiedItem
 # to clear, same pattern as USDA's flakiness fix in pipeline/usda.py.
 _MAX_ATTEMPTS = 3
 
-IDENTIFY_PROMPT_TEMPLATE = """You are looking at a photo of a meal. List each distinct food item you can see.
+IDENTIFY_PROMPT_TEMPLATE = """You are looking at a photo of a meal. Identify what's on the plate.
 
-For each item give:
-- "name": a plain, generic food name (e.g. "grilled chicken breast", "steamed white rice", "broccoli") —
-  prefer generic/homemade phrasing over brand names unless packaging is clearly visible.
+For each thing you see, decide whether it's:
+- A MIXED/COMPOSITE DISH — multiple ingredients cooked together as one dish (e.g. fried rice,
+  chow mein, a curry, a casserole, a stir-fry, a stew). Report this as ONE item with a
+  descriptive name covering its main components (e.g. "fried rice with chicken and vegetables"),
+  NOT decomposed into separate ingredients like "rice", "chicken", "carrot", "egg". Nobody
+  measures a stir-fry's carrots separately from its chicken — treat it as the one dish it is.
+- A GENUINELY SEPARATE ITEM — something a person portions and eats independently of the rest
+  of the plate (e.g. a grilled chicken breast next to a scoop of rice next to a side salad —
+  three separate things). Report each of these separately.
+
+Use judgment: if a food only makes sense described as ingredients within a larger dish, name
+the dish. If distinct foods are simply sitting side by side on the same plate, list them
+separately.
+
+For each item (dish or separate food) give:
+- "name": a descriptive name — for a composite dish, name its main components (e.g. "chow mein
+  with chicken and vegetables"); for a separate item, a simple generic name (e.g. "steamed
+  white rice", "grilled chicken breast") — prefer generic/homemade phrasing over brand names
+  unless packaging is clearly visible.
 - "confidence": your confidence (0.0-1.0) that this item is present and correctly identified.
 
 Do NOT estimate quantity, weight, or portion size — that is handled separately by the user.
