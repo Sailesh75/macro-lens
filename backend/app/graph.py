@@ -31,7 +31,7 @@ MAX_RETRIES = 2
 class MealGraphState(TypedDict):
     image_bytes: bytes
     mime_type: str
-    user_id: str
+    user_id: str | None  # None for a guest (stateless) request
     identified_items: list[dict]              # [{"name": str, "confidence": float}]
     usda_matches: dict[str, UsdaMatch | None]  # item name -> match (or None)
     unmatched_names: list[str]
@@ -90,13 +90,15 @@ def check_matches(state: MealGraphState) -> str:
 def suggest_defaults_node(state: MealGraphState) -> dict:
     """Step 3 (personalization pre-fill). Builds the final item list the
     route returns to the client — grams still null, filled in by the user
-    via /meals/calculate.
+    via /meals/calculate. Guest requests (user_id is None) have no history
+    to look up, so they always get no suggestion — not an error, just
+    nothing to pre-fill.
     """
     candidates = []
     for item in state["identified_items"]:
         name = item["name"]
         usda = state["usda_matches"].get(name)
-        suggested = db.get_suggested_grams(state["user_id"], name) if usda else None
+        suggested = db.get_suggested_grams(state["user_id"], name) if usda and state["user_id"] else None
         candidates.append(
             MealItemCandidate(name=name, confidence=item["confidence"], usda=usda, suggested_grams=suggested)
         )
@@ -124,7 +126,7 @@ def build_meal_graph():
 meal_graph = build_meal_graph()
 
 
-def run_meal_graph(image_bytes: bytes, mime_type: str, user_id: str) -> list[MealItemCandidate]:
+def run_meal_graph(image_bytes: bytes, mime_type: str, user_id: str | None) -> list[MealItemCandidate]:
     """Entry point used by routes/meals.py."""
     result = meal_graph.invoke(
         {

@@ -9,6 +9,17 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+// Used by /meals/identify and /meals/calculate, which support guest access —
+// no session just means "no Authorization header," not an error. The
+// backend treats a missing header as an anonymous, stateless request.
+async function optionalAuthHeader(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Used by history/stats endpoints, which have no guest equivalent — there's
+// no such thing as anonymous history, so a missing session is a real error.
 async function authHeader(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -29,7 +40,7 @@ export async function identifyMeal(photo: File): Promise<IdentifyResponse> {
   formData.append("photo", photo);
   const res = await fetch(`${API_BASE}/meals/identify`, {
     method: "POST",
-    headers: await authHeader(),
+    headers: await optionalAuthHeader(),
     body: formData,
   });
   return parseOrThrow<IdentifyResponse>(res);
@@ -38,7 +49,7 @@ export async function identifyMeal(photo: File): Promise<IdentifyResponse> {
 export async function calculateMeal(payload: CalculateRequest): Promise<CalculateResponse> {
   const res = await fetch(`${API_BASE}/meals/calculate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    headers: { "Content-Type": "application/json", ...(await optionalAuthHeader()) },
     body: JSON.stringify(payload),
   });
   return parseOrThrow<CalculateResponse>(res);

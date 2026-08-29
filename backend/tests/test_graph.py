@@ -79,3 +79,22 @@ def test_gives_up_after_max_retries_without_looping_forever(monkeypatch):
     assert identify_calls["count"] == 1 + MAX_RETRIES
     assert len(candidates) == 1
     assert candidates[0].usda is None
+
+
+def test_guest_request_never_looks_up_personalization(monkeypatch):
+    """user_id=None (a guest, stateless request) must never touch the
+    database — not even a read. If get_suggested_grams gets called at all
+    for a guest, that's a real bug, not just an unnecessary lookup.
+    """
+
+    def boom(user_id, name):
+        raise AssertionError("get_suggested_grams should never be called for a guest request")
+
+    monkeypatch.setattr("app.graph.identify_foods", lambda image_bytes, mime_type, retry_hint=None: [IdentifiedItem(name="chicken", confidence=0.9)])
+    monkeypatch.setattr("app.graph.match_food", lambda name: _MATCH)
+    monkeypatch.setattr("app.graph.db.get_suggested_grams", boom)
+
+    candidates = run_meal_graph(b"fake-bytes", "image/jpeg", None)
+
+    assert len(candidates) == 1
+    assert candidates[0].suggested_grams is None
