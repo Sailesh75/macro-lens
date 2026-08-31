@@ -52,6 +52,7 @@ def list_meals(user_id: str) -> list[dict]:
         .table("meals")
         .select("*, meal_items(*)")
         .eq("user_id", user_id)
+        .eq("status", "done")
         .order("created_at", desc=True)
         .execute()
     )
