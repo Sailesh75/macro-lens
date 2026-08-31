@@ -111,12 +111,22 @@ def get_match_by_fdc_id(fdc_id: str) -> UsdaMatch:
     )
 
 
-def match_food(item_name: str) -> UsdaMatch | None:
+def match_food(item_name: str, allow_fallback: bool = False) -> UsdaMatch | None:
     """Phase 4: disambiguates among multiple USDA candidates via an LLM call
     instead of blindly taking the top search result — the root cause of the
     "steamed dumplings" -> "Stew, dumpling with mutton (Navajo)" mismatch in
     learning.md. With exactly one candidate, skips the LLM call entirely
     (nothing to disambiguate, no point spending the API call).
+
+    allow_fallback (Phase 5): when the LLM says no candidate is a good match,
+    the default (False) still returns None — the graph's retry loop gets a
+    chance to re-describe the food and search again with better wording
+    first, which is what protects match quality. But the graph passes
+    allow_fallback=True on its FINAL attempt (retries exhausted): at that
+    point, refusing forever isn't protecting anything — some regional/less-
+    common dishes (e.g. Nepali momos) may genuinely have no good match in
+    USDA at all, and an approximate one (e.g. a generic dumpling entry) is
+    far more useful to the user than a permanent dead end. See learning.md.
 
     Deliberately swallows USDA errors (after retries already failed) and
     returns None instead of raising — USDA's API is known to be flaky, and
@@ -140,7 +150,9 @@ def match_food(item_name: str) -> UsdaMatch | None:
             descriptions = [c.get("description", "") for c in candidates]
             best_index = disambiguate_match(item_name, descriptions)
             if best_index is None:
-                return None
+                if not allow_fallback:
+                    return None
+                best_index = 0  # closest available guess — better than nothing
             chosen = candidates[best_index]
 
         fdc_id = str(chosen["fdcId"])

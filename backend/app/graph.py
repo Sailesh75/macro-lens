@@ -41,16 +41,31 @@ class MealGraphState(TypedDict):
 
 def identify_foods_node(state: MealGraphState) -> dict:
     """Step 1. On a retry pass (unmatched_names non-empty from a previous
-    lookup_usda run), asks Gemini to be more specific about exactly the
-    items that couldn't be matched, instead of re-describing everything
-    blind.
+    lookup_usda run), asks Gemini to re-describe exactly the items that
+    couldn't be matched, instead of re-describing everything blind.
+
+    Deliberately doesn't say "be more specific" — real testing showed that's
+    backwards for some foods. "Steamed momos" (an accurate, specific name)
+    got zero good USDA matches (its search results were all unrelated
+    seafood dishes matched on the word "steamed"); the more GENERIC name
+    "steamed dumplings" found a real, well-matched USDA entry. Being more
+    specific helps for some mismatches (the original "mutton stew dumpling"
+    bug needed a more specific description to avoid); being more generic
+    helps for others (a regional dish with no exact USDA equivalent). Let
+    the model choose the direction rather than only ever pushing one way.
     """
     unmatched = state.get("unmatched_names")
     retry_count = state.get("retry_count", 0)
 
     retry_hint = None
     if unmatched:
-        retry_hint = f"Be more specific about: {', '.join(unmatched)}"
+        retry_hint = (
+            f"These items didn't find a good nutrition database match: {', '.join(unmatched)}. "
+            "Try re-describing them differently — sometimes a MORE GENERIC/common name matches "
+            "better than an exact regional name (e.g. 'dumplings' instead of a specific regional "
+            "name for them), and sometimes a MORE SPECIFIC description helps instead. Use your "
+            "judgment about which direction is more likely to match a real database entry."
+        )
         retry_count += 1
 
     items = identify_foods(state["image_bytes"], state["mime_type"], retry_hint=retry_hint)
@@ -65,12 +80,18 @@ def lookup_usda_node(state: MealGraphState) -> dict:
     USDA candidates internally (see pipeline/usda.py) — this node's job is
     just to run it per item and track which ones came back unmatched, for
     check_matches to decide whether a retry is worth it.
+
+    Phase 5: on the graph's final attempt (no more retries left regardless
+    of this run's outcome), passes allow_fallback=True so match_food takes
+    the closest available USDA candidate instead of leaving the item
+    permanently unmatched — see match_food's docstring for why.
     """
+    is_final_attempt = state.get("retry_count", 0) >= MAX_RETRIES
     matches: dict[str, UsdaMatch | None] = {}
     unmatched: list[str] = []
     for item in state["identified_items"]:
         name = item["name"]
-        result = match_food(name)
+        result = match_food(name, allow_fallback=is_final_attempt)
         matches[name] = result
         if result is None:
             unmatched.append(name)
@@ -93,12 +114,17 @@ def suggest_defaults_node(state: MealGraphState) -> dict:
     via /meals/calculate. Guest requests (user_id is None) have no history
     to look up, so they always get no suggestion — not an error, just
     nothing to pre-fill.
+
+    Keyed on usda.fdc_id, not the item name (Phase 5 fix) — the AI-generated
+    name varies photo to photo ("chili sauce" vs "dark chili sauce" for the
+    same real food), which fragmented the running average across different
+    name buckets. fdc_id is the stable identity for "this is the same food."
     """
     candidates = []
     for item in state["identified_items"]:
         name = item["name"]
         usda = state["usda_matches"].get(name)
-        suggested = db.get_suggested_grams(state["user_id"], name) if usda and state["user_id"] else None
+        suggested = db.get_suggested_grams(state["user_id"], usda.fdc_id) if usda and state["user_id"] else None
         candidates.append(
             MealItemCandidate(name=name, confidence=item["confidence"], usda=usda, suggested_grams=suggested)
         )
