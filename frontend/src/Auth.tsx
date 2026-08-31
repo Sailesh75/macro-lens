@@ -26,7 +26,10 @@ export function Auth({ onGuestContinue }: Props) {
         if (error) throw error;
         setMessage("Check your email for a confirmation link, then log in.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
         if (error) throw error;
         // App.tsx's onAuthStateChange listener picks up the new session automatically.
       }
@@ -50,10 +53,14 @@ export function Auth({ onGuestContinue }: Props) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-center text-xl font-semibold tracking-tight">AI Macro Logger</h1>
+        <h1 className="text-center text-xl font-semibold tracking-tight">
+          AI Macro Logger
+        </h1>
 
         <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-          <h2 className="text-base font-semibold">{mode === "login" ? "Log in" : "Sign up"}</h2>
+          <h2 className="text-base font-semibold">
+            {mode === "login" ? "Log in" : "Sign up"}
+          </h2>
 
           <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
             <input
@@ -68,7 +75,9 @@ export function Auth({ onGuestContinue }: Props) {
             <input
               type="password"
               placeholder="Password"
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              autoComplete={
+                mode === "signup" ? "new-password" : "current-password"
+              }
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               minLength={6}
@@ -80,12 +89,24 @@ export function Auth({ onGuestContinue }: Props) {
               disabled={loading}
               className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
             >
-              {loading ? "Please wait..." : mode === "login" ? "Log in" : "Sign up"}
+              {loading
+                ? "Please wait..."
+                : mode === "login"
+                  ? "Log in"
+                  : "Sign up"}
             </button>
           </form>
 
-          {message && <p className="mt-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">{message}</p>}
-          {error && <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
+          {message && (
+            <p className="mt-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              {message}
+            </p>
+          )}
+          {error && (
+            <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          )}
 
           <button
             type="button"
@@ -96,7 +117,9 @@ export function Auth({ onGuestContinue }: Props) {
               setMessage(null);
             }}
           >
-            {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
+            {mode === "login"
+              ? "Need an account? Sign up"
+              : "Already have an account? Log in"}
           </button>
 
           <hr className="my-4 border-neutral-200 dark:border-neutral-800" />
@@ -118,10 +141,6 @@ export function Auth({ onGuestContinue }: Props) {
           >
             Try it without an account
           </button>
-          <p className="mt-1 text-xs italic text-neutral-400">
-            Nothing you log this way is saved — no history, no daily totals, and it won't remember
-            your portions next time.
-          </p>
         </section>
       </div>
     </div>

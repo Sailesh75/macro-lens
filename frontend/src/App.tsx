@@ -1,13 +1,24 @@
 import type { Session } from "@supabase/supabase-js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { calculateMeal, getDailyStats, identifyMeal, listMeals } from "./api";
 import { Auth } from "./Auth";
 import { DailySummary } from "./DailySummary";
 import { MealHistory } from "./MealHistory";
 import { supabase } from "./supabaseClient";
-import type { CalculateResponse, DailyStatsResponse, IdentifyResponse, MealSummary } from "./types";
+import type {
+  CalculateResponse,
+  DailyStatsResponse,
+  IdentifyResponse,
+  MealSummary,
+} from "./types";
 
-type Status = "idle" | "identifying" | "identified" | "calculating" | "done" | "error";
+type Status =
+  | "idle"
+  | "identifying"
+  | "identified"
+  | "calculating"
+  | "done"
+  | "error";
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -16,11 +27,16 @@ function App() {
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [identifyResult, setIdentifyResult] = useState<IdentifyResponse | null>(null);
+  const [identifyResult, setIdentifyResult] = useState<IdentifyResponse | null>(
+    null,
+  );
   const [gramsByName, setGramsByName] = useState<Record<string, string>>({});
-  const [calculateResult, setCalculateResult] = useState<CalculateResponse | null>(null);
+  const [calculateResult, setCalculateResult] =
+    useState<CalculateResponse | null>(null);
 
   const [meals, setMeals] = useState<MealSummary[]>([]);
   const [mealsLoading, setMealsLoading] = useState(true);
@@ -31,7 +47,10 @@ function App() {
     setMealsLoading(true);
     setStatsLoading(true);
     try {
-      const [mealsResult, statsResult] = await Promise.all([listMeals(), getDailyStats()]);
+      const [mealsResult, statsResult] = await Promise.all([
+        listMeals(),
+        getDailyStats(),
+      ]);
       setMeals(mealsResult.meals);
       setDailyStats(statsResult);
     } catch (err) {
@@ -49,9 +68,11 @@ function App() {
       setSession(data.session);
       setAuthLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        setSession(newSession);
+      },
+    );
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -112,10 +133,15 @@ function App() {
         }));
 
       if (items.length === 0) {
-        throw new Error("Enter grams for at least one matched item before calculating.");
+        throw new Error(
+          "Enter grams for at least one matched item before calculating.",
+        );
       }
 
-      const result = await calculateMeal({ meal_id: identifyResult.meal_id, items });
+      const result = await calculateMeal({
+        meal_id: identifyResult.meal_id,
+        items,
+      });
       setCalculateResult(result);
       setStatus("done");
       refreshHistoryAndStats();
@@ -140,7 +166,9 @@ function App() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="flex items-baseline justify-between gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">AI Macro Logger</h1>
+        <h1 className="text-xl font-semibold tracking-tight">
+          AI Macro Logger
+        </h1>
         {session ? (
           <button
             type="button"
@@ -162,7 +190,7 @@ function App() {
 
       {!session && (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          You're trying this out as a guest — nothing here is saved.{" "}
+          Guest mode — nothing here is saved.{" "}
           <button
             type="button"
             className="font-medium underline underline-offset-2"
@@ -174,20 +202,48 @@ function App() {
         </p>
       )}
 
-      <p className="mt-1 text-sm text-neutral-500">
-        Upload a meal photo. The AI identifies what's on your plate — you always enter how much.
-      </p>
+      <p className="mt-1 text-sm text-neutral-500">Upload a meal photo.</p>
 
       <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
         <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
           Meal photo
         </label>
+
+        {/* Two hidden inputs, one button each. `capture="environment"` makes
+            mobile browsers open the camera directly instead of a file
+            picker; desktop browsers ignore the attribute and just show the
+            normal file dialog, so both buttons behave the same there. */}
         <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handlePhotoChange}
+          className="hidden"
+        />
+        <input
+          ref={galleryInputRef}
           type="file"
           accept="image/*"
           onChange={handlePhotoChange}
-          className="mt-2 block w-full text-sm text-neutral-500 file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-700 dark:file:bg-neutral-100 dark:file:text-neutral-900 dark:hover:file:bg-white"
+          className="hidden"
         />
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+          >
+            Take photo
+          </button>
+          <button
+            type="button"
+            onClick={() => galleryInputRef.current?.click()}
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+          >
+            Choose from gallery
+          </button>
+        </div>
         {previewUrl && (
           <img
             className="mt-4 max-h-72 w-full rounded-xl object-cover"
@@ -204,7 +260,11 @@ function App() {
         </button>
       </section>
 
-      {error && <p className="mt-4 text-sm font-medium text-red-600 dark:text-red-400">{error}</p>}
+      {error && (
+        <p className="mt-4 text-sm font-medium text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
 
       {identifyResult && (
         <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
@@ -213,16 +273,26 @@ function App() {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left text-neutral-500">
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Item</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Confidence</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">USDA match</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Grams</th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Item
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Confidence
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    USDA match
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Grams
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {identifyResult.items.map((item) => (
                   <tr key={item.name}>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.name}</td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.name}
+                    </td>
                     <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
                       {Math.round(item.confidence * 100)}%
                     </td>
@@ -230,7 +300,9 @@ function App() {
                       {item.usda ? (
                         item.usda.matched_description
                       ) : (
-                        <span className="italic text-neutral-400">no match found</span>
+                        <span className="italic text-neutral-400">
+                          no match found
+                        </span>
                       )}
                     </td>
                     <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
@@ -239,11 +311,16 @@ function App() {
                           type="number"
                           min="0"
                           step="1"
-                          placeholder={item.suggested_grams ? undefined : "grams"}
+                          placeholder={
+                            item.suggested_grams ? undefined : "grams"
+                          }
                           disabled={!item.usda}
                           value={gramsByName[item.name] ?? ""}
                           onChange={(e) =>
-                            setGramsByName((prev) => ({ ...prev, [item.name]: e.target.value }))
+                            setGramsByName((prev) => ({
+                              ...prev,
+                              [item.name]: e.target.value,
+                            }))
                           }
                           className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800"
                         />
@@ -279,23 +356,47 @@ function App() {
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left text-neutral-500">
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Item</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Grams</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Calories</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Protein</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Carbs</th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">Fat</th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Item
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Grams
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Calories
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Protein
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Carbs
+                  </th>
+                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
+                    Fat
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {calculateResult.items.map((item) => (
                   <tr key={item.name}>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.name}</td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.grams}</td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.calories}</td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.protein}</td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.carbs}</td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">{item.fat}</td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.name}
+                    </td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.grams}
+                    </td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.calories}
+                    </td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.protein}
+                    </td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.carbs}
+                    </td>
+                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.fat}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -303,10 +404,18 @@ function App() {
                 <tr>
                   <td className="pt-2 font-semibold">Total</td>
                   <td className="pt-2"></td>
-                  <td className="pt-2 font-semibold">{calculateResult.total_calories}</td>
-                  <td className="pt-2 font-semibold">{calculateResult.total_protein}</td>
-                  <td className="pt-2 font-semibold">{calculateResult.total_carbs}</td>
-                  <td className="pt-2 font-semibold">{calculateResult.total_fat}</td>
+                  <td className="pt-2 font-semibold">
+                    {calculateResult.total_calories}
+                  </td>
+                  <td className="pt-2 font-semibold">
+                    {calculateResult.total_protein}
+                  </td>
+                  <td className="pt-2 font-semibold">
+                    {calculateResult.total_carbs}
+                  </td>
+                  <td className="pt-2 font-semibold">
+                    {calculateResult.total_fat}
+                  </td>
                 </tr>
               </tfoot>
             </table>
