@@ -93,12 +93,17 @@ def suggest_defaults_node(state: MealGraphState) -> dict:
     via /meals/calculate. Guest requests (user_id is None) have no history
     to look up, so they always get no suggestion — not an error, just
     nothing to pre-fill.
+
+    Keyed on usda.fdc_id, not the item name (Phase 5 fix) — the AI-generated
+    name varies photo to photo ("chili sauce" vs "dark chili sauce" for the
+    same real food), which fragmented the running average across different
+    name buckets. fdc_id is the stable identity for "this is the same food."
     """
     candidates = []
     for item in state["identified_items"]:
         name = item["name"]
         usda = state["usda_matches"].get(name)
-        suggested = db.get_suggested_grams(state["user_id"], name) if usda and state["user_id"] else None
+        suggested = db.get_suggested_grams(state["user_id"], usda.fdc_id) if usda and state["user_id"] else None
         candidates.append(
             MealItemCandidate(name=name, confidence=item["confidence"], usda=usda, suggested_grams=suggested)
         )

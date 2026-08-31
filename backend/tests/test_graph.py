@@ -81,6 +81,31 @@ def test_gives_up_after_max_retries_without_looping_forever(monkeypatch):
     assert candidates[0].usda is None
 
 
+def test_suggest_defaults_keys_personalization_on_fdc_id_not_name(monkeypatch):
+    """Phase 5 fix: the AI-generated name varies photo to photo for the same
+    real food ("chili sauce" vs "dark chili sauce"), which fragmented the
+    running average across name buckets even though fdc_id was identical.
+    The lookup must use usda.fdc_id, not the item's name.
+    """
+    captured = {}
+
+    def fake_get_suggested_grams(user_id, fdc_id):
+        captured["fdc_id"] = fdc_id
+        return 42.0
+
+    monkeypatch.setattr(
+        "app.graph.identify_foods",
+        lambda image_bytes, mime_type, retry_hint=None: [IdentifiedItem(name="dark chili sauce", confidence=0.9)],
+    )
+    monkeypatch.setattr("app.graph.match_food", lambda name: _MATCH)
+    monkeypatch.setattr("app.graph.db.get_suggested_grams", fake_get_suggested_grams)
+
+    candidates = run_meal_graph(b"fake-bytes", "image/jpeg", "user-1")
+
+    assert captured["fdc_id"] == _MATCH.fdc_id  # "1" — never "dark chili sauce"
+    assert candidates[0].suggested_grams == 42.0
+
+
 def test_guest_request_never_looks_up_personalization(monkeypatch):
     """user_id=None (a guest, stateless request) must never touch the
     database — not even a read. If get_suggested_grams gets called at all

@@ -111,15 +111,21 @@ def finalize_meal_items(meal_id: str, computed_items: list) -> None:
 
 
 # --- personalization (user_food_defaults) -----------------------------------
+#
+# Phase 5: keyed on fdc_id, not food_name. The AI-generated name varies photo
+# to photo for the same real food ("chili sauce" vs "dark chili sauce"),
+# which fragmented the running average across different name buckets even
+# though fdc_id was identical. fdc_id is the stable identity; food_name is
+# kept only as a display label, refreshed to whatever was most recently used.
 
 
-def get_suggested_grams(user_id: str, food_name: str) -> float | None:
+def get_suggested_grams(user_id: str, fdc_id: str) -> float | None:
     result = (
         get_supabase()
         .table("user_food_defaults")
         .select("avg_grams, entry_count")
         .eq("user_id", user_id)
-        .eq("food_name", food_name)
+        .eq("fdc_id", fdc_id)
         .limit(1)
         .execute()
     )
@@ -128,16 +134,19 @@ def get_suggested_grams(user_id: str, food_name: str) -> float | None:
     return None
 
 
-def record_user_grams(user_id: str, food_name: str, fdc_id: str | None, grams: float) -> None:
+def record_user_grams(user_id: str, food_name: str, fdc_id: str, grams: float) -> None:
     """Running average, per plan §6 — never a correction of an AI guess, just
     what the user has actually entered for this food before.
     """
+    if not fdc_id:
+        return  # nothing stable to key on — shouldn't happen (fdc_id is required upstream), but skip rather than corrupt the table
+
     supabase = get_supabase()
     existing = (
         supabase.table("user_food_defaults")
         .select("avg_grams, entry_count")
         .eq("user_id", user_id)
-        .eq("food_name", food_name)
+        .eq("fdc_id", fdc_id)
         .limit(1)
         .execute()
     )
@@ -145,8 +154,8 @@ def record_user_grams(user_id: str, food_name: str, fdc_id: str | None, grams: f
         prev = existing.data[0]
         new_avg = (prev["avg_grams"] * prev["entry_count"] + grams) / (prev["entry_count"] + 1)
         supabase.table("user_food_defaults").update(
-            {"avg_grams": new_avg, "entry_count": prev["entry_count"] + 1, "fdc_id": fdc_id}
-        ).eq("user_id", user_id).eq("food_name", food_name).execute()
+            {"avg_grams": new_avg, "entry_count": prev["entry_count"] + 1, "food_name": food_name}
+        ).eq("user_id", user_id).eq("fdc_id", fdc_id).execute()
     else:
         supabase.table("user_food_defaults").insert(
             {"user_id": user_id, "food_name": food_name, "fdc_id": fdc_id, "avg_grams": grams, "entry_count": 1}
