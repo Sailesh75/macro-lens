@@ -63,4 +63,23 @@ def test_match_food_returns_none_when_no_candidate_is_a_good_match(monkeypatch):
     monkeypatch.setattr("app.pipeline.usda.get_food_detail", boom)
     monkeypatch.setattr("app.pipeline.vision.disambiguate_match", lambda name, descs: None)
 
-    assert match_food("some food") is None
+    assert match_food("some food") is None  # allow_fallback defaults to False
+
+
+def test_match_food_falls_back_to_closest_candidate_when_allowed(monkeypatch):
+    """Phase 5: allow_fallback=True (the graph's final attempt) must not
+    give up just because no candidate looked like a great match — a
+    regional dish (e.g. Nepali momos) may have nothing close in USDA at
+    all, and an approximate match beats leaving the user permanently stuck.
+    """
+    candidates = [
+        {"fdcId": 1, "description": "closest available dish"},
+        {"fdcId": 2, "description": "less close dish"},
+    ]
+    monkeypatch.setattr("app.pipeline.usda.search_food", lambda name: candidates)
+    monkeypatch.setattr("app.pipeline.usda.get_food_detail", lambda fdc_id: _DETAIL)
+    monkeypatch.setattr("app.pipeline.vision.disambiguate_match", lambda name, descs: None)
+
+    result = match_food("some regional dish", allow_fallback=True)
+    assert result is not None
+    assert result.fdc_id == "1"  # falls back to the top search result

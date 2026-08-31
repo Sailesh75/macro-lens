@@ -19,7 +19,7 @@ def test_no_retry_needed_when_everything_matches_first_try(monkeypatch):
         return [IdentifiedItem(name="chicken", confidence=0.9)]
 
     monkeypatch.setattr("app.graph.identify_foods", counting_identify)
-    monkeypatch.setattr("app.graph.match_food", lambda name: _MATCH)
+    monkeypatch.setattr("app.graph.match_food", lambda name, allow_fallback=False: _MATCH)
     monkeypatch.setattr("app.graph.db.get_suggested_grams", lambda user_id, name: None)
 
     candidates = run_meal_graph(b"fake-bytes", "image/jpeg", "user-1")
@@ -42,7 +42,7 @@ def test_retries_and_eventually_succeeds(monkeypatch):
             return [IdentifiedItem(name="mystery food", confidence=0.5)]
         return [IdentifiedItem(name="chicken breast", confidence=0.9)]
 
-    def fake_match_food(name):
+    def fake_match_food(name, allow_fallback=False):
         return _MATCH if name == "chicken breast" else None
 
     monkeypatch.setattr("app.graph.identify_foods", fake_identify)
@@ -59,9 +59,10 @@ def test_retries_and_eventually_succeeds(monkeypatch):
 
 
 def test_gives_up_after_max_retries_without_looping_forever(monkeypatch):
-    """A food that never matches, no matter how many times we re-describe
-    it, must not loop forever — the graph should terminate with usda=None
-    for that item rather than retry indefinitely.
+    """A food with zero USDA search results at all (not just a poor match —
+    genuinely nothing found, even on the fallback-enabled final attempt)
+    must not loop forever — the graph should terminate with usda=None for
+    that item rather than retry indefinitely.
     """
     identify_calls = {"count": 0}
 
@@ -70,7 +71,7 @@ def test_gives_up_after_max_retries_without_looping_forever(monkeypatch):
         return [IdentifiedItem(name="unidentifiable blob", confidence=0.3)]
 
     monkeypatch.setattr("app.graph.identify_foods", fake_identify)
-    monkeypatch.setattr("app.graph.match_food", lambda name: None)
+    monkeypatch.setattr("app.graph.match_food", lambda name, allow_fallback=False: None)
     monkeypatch.setattr("app.graph.db.get_suggested_grams", lambda user_id, name: None)
 
     candidates = run_meal_graph(b"fake-bytes", "image/jpeg", "user-1")
@@ -79,6 +80,35 @@ def test_gives_up_after_max_retries_without_looping_forever(monkeypatch):
     assert identify_calls["count"] == 1 + MAX_RETRIES
     assert len(candidates) == 1
     assert candidates[0].usda is None
+
+
+def test_falls_back_to_closest_match_once_retries_are_exhausted(monkeypatch):
+    """Phase 5: a food with no good USDA match (e.g. a regional dish like
+    Nepali momos with no close USDA entry) should get retried first — but
+    once retries run out, match_food should be called with
+    allow_fallback=True so it takes the closest available candidate rather
+    than leaving the user permanently stuck with no way to log the item.
+    """
+    allow_fallback_seen = []
+
+    def fake_identify(image_bytes, mime_type, retry_hint=None):
+        return [IdentifiedItem(name="momos", confidence=0.9)]
+
+    def fake_match_food(name, allow_fallback=False):
+        allow_fallback_seen.append(allow_fallback)
+        if allow_fallback:
+            return _MATCH  # the "closest available" fallback match
+        return None  # earlier attempts: no good match, keep retrying
+
+    monkeypatch.setattr("app.graph.identify_foods", fake_identify)
+    monkeypatch.setattr("app.graph.match_food", fake_match_food)
+    monkeypatch.setattr("app.graph.db.get_suggested_grams", lambda user_id, fdc_id: None)
+
+    candidates = run_meal_graph(b"fake-bytes", "image/jpeg", "user-1")
+
+    # Retried with allow_fallback=False every time except the final attempt.
+    assert allow_fallback_seen == [False] * MAX_RETRIES + [True]
+    assert candidates[0].usda is not None  # got the fallback match, not stuck
 
 
 def test_suggest_defaults_keys_personalization_on_fdc_id_not_name(monkeypatch):
@@ -97,7 +127,7 @@ def test_suggest_defaults_keys_personalization_on_fdc_id_not_name(monkeypatch):
         "app.graph.identify_foods",
         lambda image_bytes, mime_type, retry_hint=None: [IdentifiedItem(name="dark chili sauce", confidence=0.9)],
     )
-    monkeypatch.setattr("app.graph.match_food", lambda name: _MATCH)
+    monkeypatch.setattr("app.graph.match_food", lambda name, allow_fallback=False: _MATCH)
     monkeypatch.setattr("app.graph.db.get_suggested_grams", fake_get_suggested_grams)
 
     candidates = run_meal_graph(b"fake-bytes", "image/jpeg", "user-1")
@@ -116,7 +146,7 @@ def test_guest_request_never_looks_up_personalization(monkeypatch):
         raise AssertionError("get_suggested_grams should never be called for a guest request")
 
     monkeypatch.setattr("app.graph.identify_foods", lambda image_bytes, mime_type, retry_hint=None: [IdentifiedItem(name="chicken", confidence=0.9)])
-    monkeypatch.setattr("app.graph.match_food", lambda name: _MATCH)
+    monkeypatch.setattr("app.graph.match_food", lambda name, allow_fallback=False: _MATCH)
     monkeypatch.setattr("app.graph.db.get_suggested_grams", boom)
 
     candidates = run_meal_graph(b"fake-bytes", "image/jpeg", None)
