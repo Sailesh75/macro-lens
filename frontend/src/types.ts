@@ -2,6 +2,11 @@
 // (A generated client from the OpenAPI schema is a reasonable later upgrade,
 // not needed for a project this size yet.)
 
+export interface Portion {
+  label: string;
+  grams: number;
+}
+
 export interface UsdaMatch {
   fdc_id: string;
   matched_description: string;
@@ -9,6 +14,7 @@ export interface UsdaMatch {
   protein_per_100g: number;
   carbs_per_100g: number;
   fat_per_100g: number;
+  portions: Portion[];
 }
 
 export interface MealItemCandidate {

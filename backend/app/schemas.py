@@ -8,6 +8,18 @@ class IdentifiedItem(BaseModel):
     confidence: float = Field(ge=0, le=1, description="Model's confidence this item is present and correctly named")
 
 
+class Portion(BaseModel):
+    """A named, USDA-sourced serving size for a food, e.g. "medium (7\" to
+    7-7/8\" long)" = 118g for a banana. Lets the frontend offer a count-based
+    entry ("2 medium bananas") that still resolves to a real gram figure
+    instead of an assumed constant — see plan §1/§6 for why grams stays the
+    thing that's actually stored, this is just a convenience for computing it.
+    """
+
+    label: str
+    grams: float = Field(gt=0)
+
+
 class UsdaMatch(BaseModel):
     fdc_id: str
     matched_description: str
@@ -15,6 +27,7 @@ class UsdaMatch(BaseModel):
     protein_per_100g: float
     carbs_per_100g: float
     fat_per_100g: float
+    portions: list[Portion] = Field(default_factory=list)
 
 
 class MealItemCandidate(BaseModel):

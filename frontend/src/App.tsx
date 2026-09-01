@@ -35,6 +35,12 @@ function App() {
     null,
   );
   const [gramsByName, setGramsByName] = useState<Record<string, string>>({});
+  // Count-based entry (e.g. "2 medium bananas"): gramsPerUnitByName holds the
+  // USDA portion the user picked (its gram weight), countByName how many of
+  // them. Both are just a convenience for computing gramsByName — grams
+  // stays the value actually submitted, and stays directly editable too.
+  const [gramsPerUnitByName, setGramsPerUnitByName] = useState<Record<string, number>>({});
+  const [countByName, setCountByName] = useState<Record<string, string>>({});
   const [calculateResult, setCalculateResult] =
     useState<CalculateResponse | null>(null);
 
@@ -93,7 +99,36 @@ function App() {
     setIdentifyResult(null);
     setCalculateResult(null);
     setGramsByName({});
+    setGramsPerUnitByName({});
+    setCountByName({});
     setError(null);
+  }
+
+  function handlePortionChange(itemName: string, gramsPerUnit: number | null) {
+    if (gramsPerUnit == null) {
+      // "Enter grams manually" — stop computing from a portion, leave
+      // whatever grams value is already there for the user to edit freely.
+      setGramsPerUnitByName((prev) => {
+        const next = { ...prev };
+        delete next[itemName];
+        return next;
+      });
+      return;
+    }
+    setGramsPerUnitByName((prev) => ({ ...prev, [itemName]: gramsPerUnit }));
+    const count = Number(countByName[itemName] ?? "1") || 1;
+    setGramsByName((prev) => ({ ...prev, [itemName]: String(Math.round(gramsPerUnit * count)) }));
+  }
+
+  function handleCountChange(itemName: string, countStr: string) {
+    setCountByName((prev) => ({ ...prev, [itemName]: countStr }));
+    const gramsPerUnit = gramsPerUnitByName[itemName];
+    if (gramsPerUnit == null) return; // no portion picked yet — nothing to recompute
+    const count = Number(countStr) || 0;
+    setGramsByName((prev) => ({
+      ...prev,
+      [itemName]: count > 0 ? String(Math.round(gramsPerUnit * count)) : "",
+    }));
   }
 
   async function handleIdentify() {
@@ -112,6 +147,8 @@ function App() {
         }
       }
       setGramsByName(initialGrams);
+      setGramsPerUnitByName({});
+      setCountByName({});
       setStatus("identified");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -306,6 +343,38 @@ function App() {
                       )}
                     </td>
                     <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+                      {item.usda && item.usda.portions.length > 0 && (
+                        <div className="mb-1 flex items-center gap-1">
+                          <select
+                            value={gramsPerUnitByName[item.name] ?? ""}
+                            onChange={(e) =>
+                              handlePortionChange(
+                                item.name,
+                                e.target.value === "" ? null : Number(e.target.value),
+                              )
+                            }
+                            className="rounded-lg border border-neutral-300 px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800"
+                          >
+                            <option value="">grams manually</option>
+                            {item.usda.portions.map((p) => (
+                              <option key={p.label} value={p.grams}>
+                                {p.label} ({Math.round(p.grams)}g)
+                              </option>
+                            ))}
+                          </select>
+                          {gramsPerUnitByName[item.name] != null && (
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={countByName[item.name] ?? "1"}
+                              onChange={(e) => handleCountChange(item.name, e.target.value)}
+                              className="w-12 rounded-lg border border-neutral-300 px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800"
+                              title="Count"
+                            />
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         <input
                           type="number"

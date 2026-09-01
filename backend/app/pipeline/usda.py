@@ -16,7 +16,7 @@ import time
 import httpx
 
 from app.config import get_settings
-from app.schemas import UsdaMatch
+from app.schemas import Portion, UsdaMatch
 
 BASE_URL = "https://api.nal.usda.gov/fdc/v1"
 
@@ -94,6 +94,58 @@ def _extract_macros_per_100g(food_detail: dict) -> dict[str, float]:
     return macros
 
 
+def _extract_portions(food_detail: dict) -> list[Portion]:
+    """USDA lists common serving sizes per food (foodPortions[]) — e.g. a
+    banana has separate "small"/"medium"/"large"/"extra large" entries with
+    their own gram weights, rather than one fixed weight for every banana.
+    That's what lets the frontend offer a count-based entry ("2 medium
+    bananas") without reintroducing the guessing this app deliberately
+    avoids — the user still picks which size matches theirs, and the
+    resulting grams value stays fully editable. See learning.md.
+
+    Where the human-readable label lives depends on the dataType, found by
+    testing against the real API (not assumed): SR Legacy/Foundation put it
+    in `modifier` (e.g. "medium (7\" to 7-7/8\" long)") and leave
+    `portionDescription` null; Survey (FNDDS) does the opposite — its
+    `modifier` is an internal numeric food-code (e.g. "60343"), and the
+    actual text ("1 banana", "1 slice") is in `portionDescription`. Prefer
+    portionDescription when it's present and not the generic "Quantity not
+    specified" placeholder; otherwise fall back to modifier, but only if it
+    isn't just a numeric code.
+
+    Not every food has portions that make sense as a "count" (a cooked
+    chicken breast's are things like "oz"/"piece", not whole-item sizes) —
+    deliberately not filtered further; the frontend just falls back to a
+    plain grams input when this list is empty or nothing looks useful, so
+    an odd entry is harmless rather than wrong.
+    """
+    portions: list[Portion] = []
+    for entry in food_detail.get("foodPortions", []):
+        grams = entry.get("gramWeight")
+        if not grams or grams <= 0:
+            continue
+
+        description = (entry.get("portionDescription") or "").strip()
+        modifier = (entry.get("modifier") or "").strip()
+
+        label = None
+        if description and description.lower() != "quantity not specified":
+            label = description
+        elif modifier and not modifier.isdigit():
+            label = modifier
+
+        if not label:
+            unit = (entry.get("measureUnit") or {}).get("name")
+            amount = entry.get("amount")
+            if unit and unit.lower() != "undetermined" and amount:
+                label = f"{amount:g} {unit}"
+
+        if not label:
+            continue  # nothing informative to show — skip rather than guess
+        portions.append(Portion(label=label, grams=grams))
+    return portions
+
+
 def get_match_by_fdc_id(fdc_id: str) -> UsdaMatch:
     """Re-fetch a specific USDA entry by id — used when the client already
     knows which match it wants (e.g. confirming grams for a previously
@@ -108,6 +160,7 @@ def get_match_by_fdc_id(fdc_id: str) -> UsdaMatch:
         protein_per_100g=macros["protein_per_100g"],
         carbs_per_100g=macros["carbs_per_100g"],
         fat_per_100g=macros["fat_per_100g"],
+        portions=_extract_portions(detail),
     )
 
 
@@ -169,4 +222,5 @@ def match_food(item_name: str, allow_fallback: bool = False) -> UsdaMatch | None
         protein_per_100g=macros["protein_per_100g"],
         carbs_per_100g=macros["carbs_per_100g"],
         fat_per_100g=macros["fat_per_100g"],
+        portions=_extract_portions(detail),
     )
