@@ -1,6 +1,6 @@
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
-import { calculateMeal, getDailyStats, identifyMeal, listMeals } from "./api";
+import { calculateMeal, getDailyStats, identifyMeal, identifyMealFromText, listMeals } from "./api";
 import { Auth } from "./Auth";
 import { DailySummary } from "./DailySummary";
 import { MealHistory } from "./MealHistory";
@@ -19,6 +19,26 @@ type Status =
   | "calculating"
   | "done"
   | "error";
+
+// Minimal shape of the browser's (non-standard, prefixed) Web Speech API —
+// no @types package for it, and only these few members are used here.
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  }
+}
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -43,6 +63,17 @@ function App() {
   const [countByName, setCountByName] = useState<Record<string, string>>({});
   const [calculateResult, setCalculateResult] =
     useState<CalculateResponse | null>(null);
+
+  // Typing/voice entry point (alternative to photo). Voice mode is just the
+  // browser's speech-to-text filling `description` — by the time it's
+  // submitted it's indistinguishable from something typed.
+  const [entryMode, setEntryMode] = useState<"photo" | "text">("photo");
+  const [description, setDescription] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechSupported =
+    typeof window !== "undefined" &&
+    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const [meals, setMeals] = useState<MealSummary[]>([]);
   const [mealsLoading, setMealsLoading] = useState(true);
@@ -96,12 +127,7 @@ function App() {
     setPhoto(file);
     setPreviewUrl(file ? URL.createObjectURL(file) : null);
     // Starting over with a new photo clears any previous meal's state.
-    setIdentifyResult(null);
-    setCalculateResult(null);
-    setGramsByName({});
-    setGramsPerUnitByName({});
-    setCountByName({});
-    setError(null);
+    resetMealState();
   }
 
   function handlePortionChange(itemName: string, gramsPerUnit: number | null) {
@@ -131,6 +157,69 @@ function App() {
     }));
   }
 
+  function resetMealState() {
+    setIdentifyResult(null);
+    setCalculateResult(null);
+    setGramsByName({});
+    setGramsPerUnitByName({});
+    setCountByName({});
+    setError(null);
+  }
+
+  function handleEntryModeChange(mode: "photo" | "text") {
+    setEntryMode(mode);
+    resetMealState();
+  }
+
+  function toggleListening() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!Ctor) return; // speechSupported already guards the button, but be safe
+    const recognition = new Ctor();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setDescription((prev) => (prev ? `${prev} ${transcript}` : transcript));
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }
+
+  function applySuggestedGrams(items: IdentifyResponse["items"]) {
+    const initialGrams: Record<string, string> = {};
+    for (const item of items) {
+      if (item.suggested_grams != null) {
+        initialGrams[item.name] = String(item.suggested_grams);
+      }
+    }
+    setGramsByName(initialGrams);
+    setGramsPerUnitByName({});
+    setCountByName({});
+  }
+
+  async function handleIdentifyText() {
+    if (!description.trim()) return;
+    setStatus("identifying");
+    setError(null);
+    try {
+      const result = await identifyMealFromText(description.trim());
+      setIdentifyResult(result);
+      applySuggestedGrams(result.items);
+      setStatus("identified");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("error");
+    }
+  }
+
   async function handleIdentify() {
     if (!photo) return;
     setStatus("identifying");
@@ -138,17 +227,9 @@ function App() {
     try {
       const result = await identifyMeal(photo);
       setIdentifyResult(result);
-      // Pre-fill grams from personalization where available (see plan §6) —
-      // still fully editable, never authoritative.
-      const initialGrams: Record<string, string> = {};
-      for (const item of result.items) {
-        if (item.suggested_grams != null) {
-          initialGrams[item.name] = String(item.suggested_grams);
-        }
-      }
-      setGramsByName(initialGrams);
-      setGramsPerUnitByName({});
-      setCountByName({});
+      // Pre-fill grams where available — either a stated quantity (text/voice
+      // mode) or personalization (plan §6). Still fully editable either way.
+      applySuggestedGrams(result.items);
       setStatus("identified");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -239,63 +320,133 @@ function App() {
         </p>
       )}
 
-      <p className="mt-1 text-sm text-neutral-500">Upload a meal photo.</p>
+      <p className="mt-1 text-sm text-neutral-500">
+        Take a photo, or describe what you ate by typing or speaking.
+      </p>
 
-      <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-          Meal photo
-        </label>
-
-        {/* Two hidden inputs, one button each. `capture="environment"` makes
-            mobile browsers open the camera directly instead of a file
-            picker; desktop browsers ignore the attribute and just show the
-            normal file dialog, so both buttons behave the same there. */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handlePhotoChange}
-          className="hidden"
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handlePhotoChange}
-          className="hidden"
-        />
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => cameraInputRef.current?.click()}
-            className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-          >
-            Take photo
-          </button>
-          <button
-            type="button"
-            onClick={() => galleryInputRef.current?.click()}
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-          >
-            Choose from gallery
-          </button>
-        </div>
-        {previewUrl && (
-          <img
-            className="mt-4 max-h-72 w-full rounded-xl object-cover"
-            src={previewUrl}
-            alt="Selected meal"
-          />
-        )}
+      <div className="mt-4 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
         <button
-          onClick={handleIdentify}
-          disabled={!photo || status === "identifying"}
-          className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+          type="button"
+          onClick={() => handleEntryModeChange("photo")}
+          className={`px-3 py-2 text-sm font-medium ${
+            entryMode === "photo"
+              ? "border-b-2 border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
+              : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+          }`}
         >
-          {status === "identifying" ? "Identifying..." : "Identify food"}
+          Photo
         </button>
-      </section>
+        <button
+          type="button"
+          onClick={() => handleEntryModeChange("text")}
+          className={`px-3 py-2 text-sm font-medium ${
+            entryMode === "text"
+              ? "border-b-2 border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
+              : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+          }`}
+        >
+          Describe (type or speak)
+        </button>
+      </div>
+
+      {entryMode === "photo" ? (
+        <section className="mt-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            Meal photo
+          </label>
+
+          {/* Two hidden inputs, one button each. `capture="environment"` makes
+              mobile browsers open the camera directly instead of a file
+              picker; desktop browsers ignore the attribute and just show the
+              normal file dialog, so both buttons behave the same there. */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handlePhotoChange}
+            className="hidden"
+          />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            className="hidden"
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+            >
+              Take photo
+            </button>
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+            >
+              Choose from gallery
+            </button>
+          </div>
+          {previewUrl && (
+            <img
+              className="mt-4 max-h-72 w-full rounded-xl object-cover"
+              src={previewUrl}
+              alt="Selected meal"
+            />
+          )}
+          <button
+            onClick={handleIdentify}
+            disabled={!photo || status === "identifying"}
+            className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+          >
+            {status === "identifying" ? "Identifying..." : "Identify food"}
+          </button>
+        </section>
+      ) : (
+        <section className="mt-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            What did you eat?
+          </label>
+          <p className="mt-1 text-xs text-neutral-400">
+            Mention quantities where you can (e.g. "2 medium bananas, 150g of rice") — they'll
+            pre-fill grams for you, still editable. Anything left vague just needs grams entered
+            manually below, same as photo mode.
+          </p>
+          <div className="mt-2 flex items-start gap-2">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="e.g. I had 2 eggs, a slice of toast with butter, and a medium banana"
+              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
+            />
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleListening}
+                title={isListening ? "Stop listening" : "Speak instead of typing"}
+                className={`rounded-lg border px-3 py-2 text-sm transition ${
+                  isListening
+                    ? "border-red-300 bg-red-50 text-red-600 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400"
+                    : "border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+                }`}
+              >
+                {isListening ? "● Listening..." : "🎤"}
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleIdentifyText}
+            disabled={!description.trim() || status === "identifying"}
+            className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+          >
+            {status === "identifying" ? "Identifying..." : "Identify food"}
+          </button>
+        </section>
+      )}
 
       {error && (
         <p className="mt-4 text-sm font-medium text-red-600 dark:text-red-400">
@@ -396,9 +547,13 @@ function App() {
                         {item.suggested_grams != null && (
                           <span
                             className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                            title="Pre-filled from your history"
+                            title={
+                              item.suggested_grams_source === "stated"
+                                ? "Parsed from what you typed/said"
+                                : "Pre-filled from your history"
+                            }
                           >
-                            remembered
+                            {item.suggested_grams_source === "stated" ? "from your description" : "remembered"}
                           </span>
                         )}
                       </div>

@@ -22,6 +22,9 @@ export interface MealItemCandidate {
   confidence: number;
   usda: UsdaMatch | null;
   suggested_grams: number | null;
+  // "stated" = parsed from what you typed/said this time; "remembered" =
+  // pre-filled from your history; null = no suggestion at all.
+  suggested_grams_source: "stated" | "remembered" | null;
 }
 
 export interface IdentifyResponse {
