@@ -2,7 +2,7 @@
 
 The full photo → S3 → vision → USDA → grams → macros pipeline, persisted to
 Supabase, with real auth, history/summary endpoints, tests, and CI/CD. See
-[../ai-macro-logger-plan.md](../ai-macro-logger-plan.md) for the full plan.
+[../macrolens-plan.md](../macrolens-plan.md) for the full plan.
 
 ## Deployed environments
 

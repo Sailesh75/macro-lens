@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import meals, stats
 
-app = FastAPI(title="AI Food & Macro Logger — API", version="0.1.0")
+app = FastAPI(title="MacroLens — API", version="0.1.0")
 
 # Local dev (desktop + phone-on-LAN) plus the deployed Vercel frontends —
 # production and staging each need to be listed explicitly since the backend
