@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app import db
 from app.auth import get_current_user_id, get_optional_user_id
-from app.graph import run_meal_graph
+from app.graph import run_meal_graph, run_meal_graph_from_text
 from app.pipeline.macros import compute_item_macros, sum_macros
 from app.pipeline.storage import upload_photo
 from app.pipeline.usda import get_match_by_fdc_id
@@ -23,6 +23,7 @@ from app.schemas import (
     CalculateRequest,
     CalculateResponse,
     IdentifyResponse,
+    IdentifyTextRequest,
     MealItemRow,
     MealListResponse,
     MealSummary,
@@ -66,6 +67,34 @@ async def identify(photo: UploadFile, user_id: str | None = Depends(get_optional
     if user_id:
         image_url = upload_photo(image_bytes, content_type=content_type)
         meal_id = db.create_meal(user_id=user_id, image_url=image_url)
+        db.create_meal_items(meal_id, candidates)
+    else:
+        meal_id = str(uuid.uuid4())
+
+    return IdentifyResponse(meal_id=meal_id, items=candidates)
+
+
+@router.post("/identify-text", response_model=IdentifyResponse)
+async def identify_text(
+    payload: IdentifyTextRequest, user_id: str | None = Depends(get_optional_user_id)
+) -> IdentifyResponse:
+    """Typing/voice entry point. Voice mode is the same request — the
+    browser's speech-to-text turns speech into this same `text` field
+    client-side, so there's no separate backend path for it. Otherwise
+    identical to identify(): same graph (run_meal_graph_from_text), same
+    persistence-for-real-users/nothing-for-guests behavior, and the same
+    /meals/calculate afterward — grams are still always user-confirmed
+    before anything is stored, even when a quantity was pre-filled from the
+    text itself (see graph.py's suggest_defaults_node).
+    """
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(400, "Description is empty")
+
+    candidates = run_meal_graph_from_text(text, user_id)
+
+    if user_id:
+        meal_id = db.create_meal(user_id=user_id, image_url=None)
         db.create_meal_items(meal_id, candidates)
     else:
         meal_id = str(uuid.uuid4())

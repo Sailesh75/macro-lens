@@ -46,6 +46,18 @@ export async function identifyMeal(photo: File): Promise<IdentifyResponse> {
   return parseOrThrow<IdentifyResponse>(res);
 }
 
+// Typing/voice entry point. Voice mode reuses this unchanged — the browser's
+// SpeechRecognition API turns speech into text client-side first, so by the
+// time it reaches here it's indistinguishable from something typed.
+export async function identifyMealFromText(text: string): Promise<IdentifyResponse> {
+  const res = await fetch(`${API_BASE}/meals/identify-text`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await optionalAuthHeader()) },
+    body: JSON.stringify({ text }),
+  });
+  return parseOrThrow<IdentifyResponse>(res);
+}
+
 export async function calculateMeal(payload: CalculateRequest): Promise<CalculateResponse> {
   const res = await fetch(`${API_BASE}/meals/calculate`, {
     method: "POST",
