@@ -110,6 +110,71 @@ def identify_foods(image_bytes: bytes, mime_type: str = "image/jpeg", retry_hint
     return [IdentifiedItem(**item) for item in parsed]
 
 
+TEXT_IDENTIFY_PROMPT_TEMPLATE = """A user is describing what they ate today, by typing or speaking it. Extract each distinct food item from their description.
+
+Use the same judgment as identifying from a photo: report a MIXED/COMPOSITE DISH as ONE item
+with a descriptive name (e.g. "fried rice with chicken and vegetables"), not decomposed into
+separate ingredients. Report GENUINELY SEPARATE items separately (e.g. "grilled chicken" and
+"rice" mentioned side by side).
+
+For each item, give:
+- "name": a descriptive food name, same conventions as identifying from a photo. Do NOT
+  include the size/quantity word here — that belongs only in "unit" (e.g. for "2 medium
+  bananas", name is "banana", not "medium banana").
+- "confidence": your confidence (0.0-1.0) this is a real, correctly identified food.
+- "amount": the NUMERIC quantity the user stated for this item, if any (e.g. 2 for "2 eggs",
+  150 for "150g of rice"). null if no quantity was mentioned for this item at all.
+- "unit": ONLY the size/measure word itself, nothing else — never repeat the food name here.
+  Examples: "g", "kg", "oz", "medium", "large", "slice", "cup". If the user gave a bare count
+  with no separate size/measure word (e.g. "2 eggs"), use the singular form of the food's own
+  name as the unit (e.g. "egg") — but if a size word IS present (e.g. "medium" in "2 medium
+  bananas"), use just that word, not "medium banana". null if "amount" is null.
+
+Never invent a quantity the user didn't state — leave "amount" and "unit" null rather than
+guessing one.
+
+Example: input "2 medium bananas and a bowl of rice, about 150g" ->
+[{{"name": "banana", "confidence": 0.95, "amount": 2, "unit": "medium"}},
+ {{"name": "rice", "confidence": 0.9, "amount": 150, "unit": "g"}}]
+{retry_hint}
+User's description: "{text}"
+
+Respond with ONLY a JSON array, no other text, in the same shape as the example above.
+"""
+
+
+def identify_foods_from_text(text: str, retry_hint: str | None = None) -> list[IdentifiedItem]:
+    """The typing/voice entry point's version of identify_foods. Voice mode
+    reuses this unchanged — the browser's speech-to-text produces the text
+    client-side, so by the time it reaches here it's indistinguishable from
+    something typed. See pipeline/quantity.py for how amount+unit here
+    become an actual gram figure.
+    """
+    settings = get_settings()
+    client = _client()
+
+    hint_text = f"\n{retry_hint}\n" if retry_hint else ""
+    prompt = TEXT_IDENTIFY_PROMPT_TEMPLATE.format(retry_hint=hint_text, text=text)
+
+    response = _generate_with_retry(
+        client,
+        model=settings.gemini_model,
+        contents=[prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.2,
+        ),
+    )
+
+    raw = response.text or "[]"
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Gemini did not return valid JSON: {raw!r}") from e
+
+    return [IdentifiedItem(**item) for item in parsed]
+
+
 DISAMBIGUATE_PROMPT_TEMPLATE = """A food was identified in a photo as: "{item_name}"
 
 Here are USDA FoodData Central search results that matched that name:
