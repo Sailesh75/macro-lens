@@ -54,7 +54,7 @@ export function Auth({ onGuestContinue }: Props) {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <h1 className="text-center text-xl font-semibold tracking-tight">
-          AI Macro Logger
+          MacroLens
         </h1>
 
         <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
