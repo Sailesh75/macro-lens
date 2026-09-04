@@ -19,6 +19,6 @@ dist/
 *.log
 
 # ignored by me
-ai-macro-logger-plan.md
+macrolens-plan.md
 learning.md
 supabase
