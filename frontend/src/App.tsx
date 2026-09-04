@@ -285,7 +285,7 @@ function App() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="text-xl font-semibold tracking-tight">
-          AI Macro Logger
+          MacroLens
         </h1>
         {session ? (
           <button
@@ -374,7 +374,15 @@ function App() {
             onChange={handlePhotoChange}
             className="hidden"
           />
-          <div className="mt-2 flex gap-2">
+          {/* Mobile: separate "Take photo" (camera) and "Choose from
+              gallery" buttons — a camera shortcut is worth surfacing on a
+              phone. Desktop: one plain "Add photo" button (opens the same
+              gallery-style file picker) — there's no camera-first workflow
+              on a laptop, so splitting the choice there was just noise.
+              Which one shows is a CSS breakpoint (viewport width), not a
+              device check — the standard, reliable way to tell "phone-sized
+              screen" from "desktop-sized screen" in a web app. */}
+          <div className="mt-2 flex gap-2 sm:hidden">
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
@@ -388,6 +396,15 @@ function App() {
               className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
             >
               Choose from gallery
+            </button>
+          </div>
+          <div className="mt-2 hidden sm:flex">
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+            >
+              Add photo
             </button>
           </div>
           {previewUrl && (
