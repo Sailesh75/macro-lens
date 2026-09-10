@@ -1,7 +1,7 @@
 # MacroLens
 
 A meal-logging app where you photograph (or describe) a meal, an AI vision
-pipeline identifies *what's* on the plate, and you enter *how much* of each
+pipeline identifies _what's_ on the plate, and you enter _how much_ of each
 item — in grams. The app never guesses portion size; instead it remembers
 your typical portions per food and pre-fills them next time, so logging gets
 faster the more you use it.
@@ -17,7 +17,7 @@ Gram-level portion estimation from a single 2D photo is a known-unreliable
 problem — published benchmarks (e.g. Nutrition5k) show 20-40%+ error even
 with dedicated models and reference objects. Rather than ship an AI guess and
 try to correct it, MacroLens asks the user for the one number a photo
-genuinely can't give it, and personalizes by *remembering* that number per
+genuinely can't give it, and personalizes by _remembering_ that number per
 food. The vision model's job is strictly identification (what food, matched
 to a real nutrition record); the human's job is quantity. That split is the
 whole design.
@@ -44,38 +44,45 @@ whole design.
 ## Architecture
 
 ```
-                    ┌─────────────────────────────┐
-  Photo / text  ──▶ │   FastAPI  (POST /meals/…)  │
-                    └──────────────┬───────────────┘
-                                   ▼
-                    ┌─────────────────────────────┐
-                    │        LangGraph pipeline     │
-                    │                                │
-                    │  identify_foods (Gemini)       │
-                    │        │                       │
-                    │        ▼                       │
-                    │  lookup_usda (FoodData Central, │
-                    │  LLM disambiguation)            │
-                    │        │                       │
-                    │  no good match & retries left?  │
-                    │   ── yes ──▶ loop back to        │
-                    │              identify_foods       │
-                    │   ── no ───▶ suggest_defaults     │
-                    │      (this user's remembered      │
-                    │       grams for each matched food)│
-                    └──────────────┬───────────────┘
-                                   ▼
-                    Photo → S3, item list → client
-                                   ▼
-                 User reviews / edits grams per item
-                                   ▼
-                    ┌─────────────────────────────┐
-                    │  POST /meals/calculate        │
-                    │  grams × USDA per-100g data    │
-                    │  → macros, persisted, and the  │
-                    │  per-user average grams for    │
-                    │  each food is updated           │
-                    └─────────────────────────────┘
+   Photo  /  text description
+        |
+        v
++----------------------------------------------------------------+
+|   FastAPI                                                      |
+|   POST /meals/identify     POST /meals/identify-text           |
++----------------------------------------------------------------+
+        |
+        v
++----------------------------------------------------------------+
+|   LangGraph pipeline   (app/graph.py)                          |
+|                                                                |
+|     identify_foods   -  Gemini: food names only, never grams   |
+|          |                                                     |
+|          v                                                     |
+|     lookup_usda      -  USDA FoodData Central search, plus an  |
+|                         LLM call to pick the best candidate    |
+|          |                                                     |
+|          v                                                     |
+|     check_matches                                              |
+|       |-- unmatched & retries left --> identify_foods (retry)  |
+|       '-- otherwise                --> suggest_defaults        |
+|                    pre-fill grams from this user's remembered  |
+|                    portion for each matched food               |
++----------------------------------------------------------------+
+        |
+        v
+   Photo -> S3      meal + items -> Postgres      items -> client
+        |
+        v
+   User reviews / edits grams per item   (in the browser)
+        |
+        v
++----------------------------------------------------------------+
+|   POST /meals/calculate                                        |
+|     macros  =  grams x USDA-per-100g,  summed per item         |
+|     -> persisted, meal marked done, and each food's running    |
+|        average grams for this user is updated (personalization)|
++----------------------------------------------------------------+
 ```
 
 The retry loop (`identify_foods → lookup_usda → check_matches`) is the one
@@ -88,20 +95,33 @@ LangGraph's interrupt/checkpoint machinery — it's just two REST calls
 Postgres, which is simpler than standing up graph checkpointing to solve a
 problem a normal API already solves.
 
+## Guardrails
+
+The guardrails here are mostly architectural. The LLM is never authoritative
+for a number as it only identifies food; nutrition values come from USDA and
+portions are always user-entered, so the model structurally can't put a wrong
+calorie count in your log. On top of that: model output is constrained to
+JSON and validated against a schema that fails closed, the identify→match
+retry loop is capped (`MAX_RETRIES = 2`) with tests proving it terminates,
+the pipeline can return "no match" instead of forcing a wrong one, and auth
+is verified server-side with the user ID always taken from the token. Natural
+next steps are an input-relevance check (reject photos with no food) and
+rate limiting on the guest endpoints.
+
 ## Tech stack
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Frontend | React + TypeScript (Vite) | Plain CSS, no framework |
-| Backend / API | Python, FastAPI | |
-| Orchestration | LangGraph | Used for the one real cycle in the pipeline; no LangChain |
-| Vision & text understanding | Google Gemini (`google-genai` SDK) | Food identification + USDA candidate disambiguation |
-| Nutrition data | USDA FoodData Central API | Real external dataset, not synthetic |
-| Auth + database | Supabase (Postgres + Auth) | Email/password and Google OAuth |
-| Photo storage | AWS S3 | Private bucket, uploaded via a scoped IAM user |
-| Hosting | Vercel (frontend) + Render (backend) | Separate staging/production environments on each |
-| CI | GitHub Actions | Backend pytest suite + frontend type-check/build on every push/PR |
-| Testing | pytest, mocked HTTP/SDK calls | Focused on pipeline logic (macro math, retry/disambiguation, resilience to real USDA/Gemini flakiness hit during development) |
+| Layer                       | Choice                               | Notes                                                                                                                         |
+| --------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Frontend                    | React + TypeScript (Vite)            | Plain CSS, no framework                                                                                                       |
+| Backend / API               | Python, FastAPI                      |                                                                                                                               |
+| Orchestration               | LangGraph                            | Used for the one real cycle in the pipeline; no LangChain                                                                     |
+| Vision & text understanding | Google Gemini (`google-genai` SDK)   | Food identification + USDA candidate disambiguation                                                                           |
+| Nutrition data              | USDA FoodData Central API            | Real external dataset, not synthetic                                                                                          |
+| Auth + database             | Supabase (Postgres + Auth)           | Email/password and Google OAuth                                                                                               |
+| Photo storage               | AWS S3                               | Private bucket, uploaded via a scoped IAM user                                                                                |
+| Hosting                     | Vercel (frontend) + Render (backend) | Separate staging/production environments on each                                                                              |
+| CI                          | GitHub Actions                       | Backend pytest suite + frontend type-check/build on every push/PR                                                             |
+| Testing                     | pytest, mocked HTTP/SDK calls        | Focused on pipeline logic (macro math, retry/disambiguation, resilience to real USDA/Gemini flakiness hit during development) |
 
 ### AWS usage
 
@@ -139,10 +159,10 @@ details: [backend/README.md](backend/README.md) ·
 
 ## Environments & deployment
 
-| Environment | Branch | Frontend (Vercel) | Backend (Render) |
-|---|---|---|---|
-| Staging | `staging` | frontend-git-staging-…vercel.app | ai-macro-logger.onrender.com |
-| Production | `master` | frontend-sigma-liart-68.vercel.app | ai-macro-logger-prod.onrender.com |
+| Environment | Branch    | Frontend (Vercel)                  | Backend (Render)                  |
+| ----------- | --------- | ---------------------------------- | --------------------------------- |
+| Staging     | `staging` | frontend-git-staging-…vercel.app   | ai-macro-logger.onrender.com      |
+| Production  | `master`  | frontend-sigma-liart-68.vercel.app | ai-macro-logger-prod.onrender.com |
 
 Feature branches → PR into `staging` → CI runs → merge → auto-deploys to
 staging (Vercel/Render's native git integration, not custom deploy scripts).
