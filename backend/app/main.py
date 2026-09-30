@@ -13,7 +13,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://10.0.0.111:5173",
-        "https://frontend-sigma-liart-68.vercel.app",  # production
+        "https://macro-lens-scan-ai.vercel.app",  # production
         "https://frontend-git-staging-saileshs-projects-d22c8616.vercel.app",  # staging
     ],
     allow_methods=["*"],
