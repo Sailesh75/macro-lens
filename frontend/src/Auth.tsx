@@ -10,6 +10,7 @@ interface Props {
 
 export function Auth({ onGuestContinue }: Props) {
   const [mode, setMode] = useState<Mode>("login");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -23,8 +24,21 @@ export function Auth({ onGuestContinue }: Props) {
     setLoading(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          // Stored in user_metadata; App.tsx shows it in the header instead of the email.
+          options: { data: { username: username.trim() } },
+        });
         if (error) throw error;
+        // With email confirmation on, Supabase doesn't error for an already-registered
+        // email (to prevent account enumeration) — it returns a user with no identities
+        // and sends no email. Detect that so we don't claim a link was sent.
+        if (data.user && data.user.identities?.length === 0) {
+          throw new Error(
+            "This email is already registered. Log in instead, or use Google if that's how you signed up."
+          );
+        }
         setMessage("Check your email for a confirmation link, then log in.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -102,6 +116,22 @@ export function Auth({ onGuestContinue }: Props) {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-3">
+              {mode === "signup" && (
+                <input
+                  type="text"
+                  placeholder="Username"
+                  aria-label="Username"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  minLength={3}
+                  maxLength={24}
+                  pattern="[A-Za-z0-9_.\-]+"
+                  title="3–24 characters: letters, numbers, dot, underscore or hyphen"
+                  required
+                  className="input"
+                />
+              )}
               <input
                 type="email"
                 placeholder="you@example.com"

@@ -328,7 +328,8 @@ function App() {
           {session ? (
             <div className="flex min-w-0 items-center gap-1">
               <span className="hidden truncate rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 sm:block dark:border-white/10 dark:text-neutral-400">
-                {session.user.email}
+                {/* Email/password sign-ups carry a username; Google users fall back to their email. */}
+                {session.user.user_metadata?.username || session.user.email}
               </span>
               <button
                 type="button"
