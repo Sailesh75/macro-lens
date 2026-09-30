@@ -5,6 +5,20 @@ import { Auth } from "./Auth";
 import { DailySummary } from "./DailySummary";
 import { MealHistory } from "./MealHistory";
 import { supabase } from "./supabaseClient";
+import {
+  ArrowRightIcon,
+  Backdrop,
+  Brand,
+  CameraIcon,
+  ImageIcon,
+  LogOutIcon,
+  LogoMark,
+  MacroBar,
+  MacroStat,
+  MicIcon,
+  Spinner,
+  TextIcon,
+} from "./ui";
 import type {
   CalculateResponse,
   DailyStatsResponse,
@@ -49,6 +63,7 @@ function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [identifyResult, setIdentifyResult] = useState<IdentifyResponse | null>(
@@ -123,7 +138,20 @@ function App() {
   }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
+    selectPhoto(e.target.files?.[0] ?? null);
+    // Reset so picking the same file again still fires onChange.
+    e.target.value = "";
+  }
+
+  function handlePhotoDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file?.type.startsWith("image/")) selectPhoto(file);
+  }
+
+  function selectPhoto(file: File | null) {
+    if (!file) return;
     setPhoto(file);
     setPreviewUrl(file ? URL.createObjectURL(file) : null);
     // Starting over with a new photo clears any previous meal's state.
@@ -271,8 +299,9 @@ function App() {
 
   if (authLoading) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <p className="italic text-neutral-400">Loading...</p>
+      <div className="grid min-h-svh place-items-center">
+        <Backdrop />
+        <LogoMark className="size-10 animate-pulse" />
       </div>
     );
   }
@@ -281,395 +310,439 @@ function App() {
     return <Auth onGuestContinue={() => setIsGuest(true)} />;
   }
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex items-baseline justify-between gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">
-          MacroLens
-        </h1>
-        {session ? (
-          <button
-            type="button"
-            className="text-sm text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
-            onClick={handleLogout}
-          >
-            Log out ({session.user.email})
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="text-sm text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
-            onClick={() => setIsGuest(false)}
-          >
-            Log in
-          </button>
-        )}
-      </div>
+    <div className="min-h-svh">
+      <Backdrop />
 
-      {!session && (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          Guest mode — nothing here is saved.{" "}
-          <button
-            type="button"
-            className="font-medium underline underline-offset-2"
-            onClick={() => setIsGuest(false)}
-          >
-            Log in
-          </button>{" "}
-          to keep your history and daily totals.
-        </p>
-      )}
-
-      <p className="mt-1 text-sm text-neutral-500">
-        Take a photo, or describe what you ate by typing or speaking.
-      </p>
-
-      <div className="mt-4 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        <button
-          type="button"
-          onClick={() => handleEntryModeChange("photo")}
-          className={`px-3 py-2 text-sm font-medium ${
-            entryMode === "photo"
-              ? "border-b-2 border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
-              : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-          }`}
-        >
-          Photo
-        </button>
-        <button
-          type="button"
-          onClick={() => handleEntryModeChange("text")}
-          className={`px-3 py-2 text-sm font-medium ${
-            entryMode === "text"
-              ? "border-b-2 border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
-              : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-          }`}
-        >
-          Describe (type or speak)
-        </button>
-      </div>
-
-      {entryMode === "photo" ? (
-        <section className="mt-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            Meal photo
-          </label>
-
-          {/* Two hidden inputs, one button each. `capture="environment"` makes
-              mobile browsers open the camera directly instead of a file
-              picker; desktop browsers ignore the attribute and just show the
-              normal file dialog, so both buttons behave the same there. */}
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handlePhotoChange}
-            className="hidden"
-          />
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handlePhotoChange}
-            className="hidden"
-          />
-          {/* Mobile: separate "Take photo" (camera) and "Choose from
-              gallery" buttons — a camera shortcut is worth surfacing on a
-              phone. Desktop: one plain "Add photo" button (opens the same
-              gallery-style file picker) — there's no camera-first workflow
-              on a laptop, so splitting the choice there was just noise.
-              Which one shows is a CSS breakpoint (viewport width), not a
-              device check — the standard, reliable way to tell "phone-sized
-              screen" from "desktop-sized screen" in a web app. */}
-          <div className="mt-2 flex gap-2 sm:hidden">
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-            >
-              Take photo
-            </button>
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-            >
-              Choose from gallery
-            </button>
-          </div>
-          <div className="mt-2 hidden sm:flex">
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-            >
-              Add photo
-            </button>
-          </div>
-          {previewUrl && (
-            <img
-              className="mt-4 max-h-72 w-full rounded-xl object-cover"
-              src={previewUrl}
-              alt="Selected meal"
-            />
-          )}
-          <button
-            onClick={handleIdentify}
-            disabled={!photo || status === "identifying"}
-            className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-          >
-            {status === "identifying" ? "Identifying..." : "Identify food"}
-          </button>
-        </section>
-      ) : (
-        <section className="mt-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            What did you eat?
-          </label>
-          <p className="mt-1 text-xs text-neutral-400">
-            Mention quantities where you can (e.g. "2 medium bananas, 150g of rice") — they'll
-            pre-fill grams for you, still editable. Anything left vague just needs grams entered
-            manually below, same as photo mode.
-          </p>
-          <div className="mt-2 flex items-start gap-2">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="e.g. I had 2 eggs, a slice of toast with butter, and a medium banana"
-              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
-            />
-            {speechSupported && (
+      <header className="sticky top-0 z-20 border-b border-neutral-200/60 bg-neutral-50/70 backdrop-blur-xl dark:border-white/[0.06] dark:bg-neutral-950/60">
+        <div className="mx-auto flex h-16 max-w-2xl items-center justify-between gap-4 px-4">
+          <Brand />
+          {session ? (
+            <div className="flex min-w-0 items-center gap-1">
+              <span className="hidden truncate rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-500 sm:block dark:border-white/10 dark:text-neutral-400">
+                {session.user.email}
+              </span>
               <button
                 type="button"
-                onClick={toggleListening}
-                title={isListening ? "Stop listening" : "Speak instead of typing"}
-                className={`rounded-lg border px-3 py-2 text-sm transition ${
-                  isListening
-                    ? "border-red-300 bg-red-50 text-red-600 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-400"
-                    : "border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-                }`}
+                onClick={handleLogout}
+                aria-label="Log out"
+                title="Log out"
+                className="grid size-9 place-items-center rounded-full text-neutral-500 transition hover:bg-neutral-200/60 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
               >
-                {isListening ? "● Listening..." : "🎤"}
+                <LogOutIcon />
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary h-9 rounded-full px-4"
+              onClick={() => setIsGuest(false)}
+            >
+              Log in
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-2xl px-4 pb-24 pt-10">
+        {!session && (
+          <p className="mb-8 flex items-center gap-2.5 rounded-2xl border border-amber-200/70 bg-amber-50/80 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-400/15 dark:bg-amber-400/[0.06] dark:text-amber-200">
+            <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />
+            <span>
+              Guest mode: nothing here is saved.{" "}
+              <button
+                type="button"
+                className="font-medium underline underline-offset-2"
+                onClick={() => setIsGuest(false)}
+              >
+                Log in
+              </button>{" "}
+              to keep your history and daily totals.
+            </span>
+          </p>
+        )}
+
+        <div className="animate-rise">
+          <p className="eyebrow">
+            {today} · {greeting}
+          </p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">
+            What's on your <span className="font-display font-normal italic">plate?</span>
+          </h1>
+          <p className="mt-3 text-neutral-500 dark:text-neutral-400">
+            Take a photo, or describe what you ate by typing or speaking.
+          </p>
+        </div>
+
+        <div className="segmented mt-8">
           <button
-            onClick={handleIdentifyText}
-            disabled={!description.trim() || status === "identifying"}
-            className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+            type="button"
+            aria-pressed={entryMode === "photo"}
+            onClick={() => handleEntryModeChange("photo")}
           >
-            {status === "identifying" ? "Identifying..." : "Identify food"}
+            <CameraIcon /> Photo
           </button>
-        </section>
-      )}
+          <button
+            type="button"
+            aria-pressed={entryMode === "text"}
+            onClick={() => handleEntryModeChange("text")}
+          >
+            <TextIcon /> Describe
+          </button>
+        </div>
 
-      {error && (
-        <p className="mt-4 text-sm font-medium text-red-600 dark:text-red-400">
-          {error}
-        </p>
-      )}
+        {entryMode === "photo" ? (
+          <section className="card mt-4">
+            {/* Two hidden inputs, one button each. `capture="environment"` makes
+                mobile browsers open the camera directly instead of a file
+                picker; desktop browsers ignore the attribute and just show the
+                normal file dialog. */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoChange}
+              className="hidden"
+            />
+            <input
+              ref={galleryInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="hidden"
+            />
 
-      {identifyResult && (
-        <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-          <h2 className="text-base font-semibold">Identified items</h2>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="text-left text-neutral-500">
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Item
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Confidence
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    USDA match
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Grams
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {identifyResult.items.map((item) => (
-                  <tr key={item.name}>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.name}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {Math.round(item.confidence * 100)}%
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
+            {previewUrl ? (
+              <div className="group relative overflow-hidden rounded-2xl">
+                <img
+                  className="max-h-80 w-full object-cover"
+                  src={previewUrl}
+                  alt="Selected meal"
+                />
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="absolute right-3 top-3 rounded-full bg-black/55 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md transition hover:bg-black/75"
+                >
+                  Change photo
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Mobile: separate "Take photo" (camera) and "Choose from
+                    gallery" tiles — a camera shortcut is worth surfacing on a
+                    phone. Desktop: one drop zone that opens the file picker
+                    (or accepts a dragged image). Which one shows is a CSS
+                    breakpoint (viewport width), not a device check. */}
+                <div className="grid grid-cols-2 gap-3 sm:hidden">
+                  <button
+                    type="button"
+                    onClick={() => cameraInputRef.current?.click()}
+                    className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-2xl bg-neutral-900 text-sm font-medium text-white transition active:scale-[0.98] dark:bg-white dark:text-neutral-900"
+                  >
+                    <CameraIcon className="size-6" />
+                    Take photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => galleryInputRef.current?.click()}
+                    className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-neutral-300 text-sm font-medium transition active:scale-[0.98] dark:border-white/15"
+                  >
+                    <ImageIcon className="size-6" />
+                    From gallery
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handlePhotoDrop}
+                  className={`group hidden h-56 w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed transition sm:flex ${
+                    isDragging
+                      ? "border-neutral-900 bg-accent/15 dark:border-white"
+                      : "border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50 dark:border-white/15 dark:hover:border-white/30 dark:hover:bg-white/[0.03]"
+                  }`}
+                >
+                  <span className="grid size-12 place-items-center rounded-full bg-neutral-900 text-white transition group-hover:scale-105 dark:bg-white dark:text-neutral-900">
+                    <CameraIcon className="size-5" />
+                  </span>
+                  <span className="text-sm font-medium">Drop a meal photo, or click to browse</span>
+                  <span className="text-xs text-neutral-400">JPG, PNG or HEIC</span>
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={handleIdentify}
+              disabled={!photo || status === "identifying"}
+              className="btn-primary mt-4 w-full"
+            >
+              {status === "identifying" ? (
+                <>
+                  <Spinner /> Identifying
+                </>
+              ) : (
+                <>
+                  Identify food <ArrowRightIcon />
+                </>
+              )}
+            </button>
+          </section>
+        ) : (
+          <section className="card mt-4">
+            <div className="relative">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                aria-label="What did you eat?"
+                placeholder="e.g. I had 2 eggs, a slice of toast with butter, and a medium banana"
+                className="input h-auto resize-none py-3 pr-14 leading-relaxed"
+              />
+              {speechSupported && (
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  aria-label={isListening ? "Stop listening" : "Speak instead of typing"}
+                  title={isListening ? "Stop listening" : "Speak instead of typing"}
+                  className={`absolute bottom-3 right-3 grid size-9 place-items-center rounded-full transition ${
+                    isListening
+                      ? "bg-red-500 text-white ring-4 ring-red-500/25"
+                      : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-white/10 dark:text-neutral-300 dark:hover:bg-white/15"
+                  }`}
+                >
+                  {isListening ? (
+                    <span className="size-2.5 animate-pulse rounded-sm bg-white" />
+                  ) : (
+                    <MicIcon />
+                  )}
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-neutral-400">
+              {isListening
+                ? "Listening… speak now."
+                : "Mention quantities where you can (\"2 bananas, 150g rice\") and they'll pre-fill grams. Anything vague just needs grams entered below."}
+            </p>
+            <button
+              onClick={handleIdentifyText}
+              disabled={!description.trim() || status === "identifying"}
+              className="btn-primary mt-4 w-full"
+            >
+              {status === "identifying" ? (
+                <>
+                  <Spinner /> Identifying
+                </>
+              ) : (
+                <>
+                  Identify food <ArrowRightIcon />
+                </>
+              )}
+            </button>
+          </section>
+        )}
+
+        {error && (
+          <p className="mt-4 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-400/10 dark:text-red-300">
+            {error}
+          </p>
+        )}
+
+        {identifyResult && (
+          <section className="card mt-6 animate-rise">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-semibold">Identified items</h2>
+              <span className="eyebrow">Step 2 · confirm grams</span>
+            </div>
+            <ul className="mt-2 divide-y divide-neutral-100 dark:divide-white/[0.06]">
+              {identifyResult.items.map((item) => (
+                <li
+                  key={item.name}
+                  className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium capitalize">{item.name}</span>
+                      <span
+                        className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium tabular-nums text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400"
+                        title="Model confidence"
+                      >
+                        {Math.round(item.confidence * 100)}%
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
                       {item.usda ? (
                         item.usda.matched_description
                       ) : (
-                        <span className="italic text-neutral-400">
-                          no match found
-                        </span>
+                        <span className="italic">No USDA match found</span>
                       )}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.usda && item.usda.portions.length > 0 && (
-                        <div className="mb-1 flex items-center gap-1">
-                          <select
-                            value={gramsPerUnitByName[item.name] ?? ""}
-                            onChange={(e) =>
-                              handlePortionChange(
-                                item.name,
-                                e.target.value === "" ? null : Number(e.target.value),
-                              )
-                            }
-                            className="rounded-lg border border-neutral-300 px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800"
-                          >
-                            <option value="">grams manually</option>
-                            {item.usda.portions.map((p) => (
-                              <option key={p.label} value={p.grams}>
-                                {p.label} ({Math.round(p.grams)}g)
-                              </option>
-                            ))}
-                          </select>
-                          {gramsPerUnitByName[item.name] != null && (
-                            <input
-                              type="number"
-                              min="1"
-                              step="1"
-                              value={countByName[item.name] ?? "1"}
-                              onChange={(e) => handleCountChange(item.name, e.target.value)}
-                              className="w-12 rounded-lg border border-neutral-300 px-1.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800"
-                              title="Count"
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder={
-                            item.suggested_grams ? undefined : "grams"
-                          }
-                          disabled={!item.usda}
-                          value={gramsByName[item.name] ?? ""}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {item.usda && item.usda.portions.length > 0 && (
+                      <>
+                        <select
+                          value={gramsPerUnitByName[item.name] ?? ""}
                           onChange={(e) =>
-                            setGramsByName((prev) => ({
-                              ...prev,
-                              [item.name]: e.target.value,
-                            }))
+                            handlePortionChange(
+                              item.name,
+                              e.target.value === "" ? null : Number(e.target.value),
+                            )
                           }
-                          className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800"
-                        />
-                        {item.suggested_grams != null && (
-                          <span
-                            className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                            title={
-                              item.suggested_grams_source === "stated"
-                                ? "Parsed from what you typed/said"
-                                : "Pre-filled from your history"
-                            }
-                          >
-                            {item.suggested_grams_source === "stated" ? "from your description" : "remembered"}
-                          </span>
+                          className="input-sm max-w-40 text-xs"
+                          aria-label="Portion"
+                        >
+                          <option value="">grams manually</option>
+                          {item.usda.portions.map((p) => (
+                            <option key={p.label} value={p.grams}>
+                              {p.label} ({Math.round(p.grams)}g)
+                            </option>
+                          ))}
+                        </select>
+                        {gramsPerUnitByName[item.name] != null && (
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={countByName[item.name] ?? "1"}
+                            onChange={(e) => handleCountChange(item.name, e.target.value)}
+                            className="input-sm w-14"
+                            title="Count"
+                            aria-label="Count"
+                          />
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <button
-            onClick={handleCalculate}
-            disabled={status === "calculating"}
-            className="mt-4 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-          >
-            {status === "calculating" ? "Calculating..." : "Calculate macros"}
-          </button>
-        </section>
-      )}
+                      </>
+                    )}
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder={item.suggested_grams ? undefined : "0"}
+                        disabled={!item.usda}
+                        value={gramsByName[item.name] ?? ""}
+                        onChange={(e) =>
+                          setGramsByName((prev) => ({
+                            ...prev,
+                            [item.name]: e.target.value,
+                          }))
+                        }
+                        aria-label={`Grams of ${item.name}`}
+                        className="input-sm w-24 pr-7 tabular-nums"
+                      />
+                      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                        g
+                      </span>
+                    </div>
+                    {item.suggested_grams != null && (
+                      <span
+                        className="rounded-full bg-accent/25 px-2 py-0.5 text-[11px] font-medium text-lime-800 dark:bg-accent/10 dark:text-accent"
+                        title={
+                          item.suggested_grams_source === "stated"
+                            ? "Parsed from what you typed/said"
+                            : "Pre-filled from your history"
+                        }
+                      >
+                        {item.suggested_grams_source === "stated" ? "from your description" : "remembered"}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={handleCalculate}
+              disabled={status === "calculating"}
+              className="btn-primary mt-2 w-full"
+            >
+              {status === "calculating" ? (
+                <>
+                  <Spinner /> Calculating
+                </>
+              ) : (
+                <>
+                  Calculate macros <ArrowRightIcon />
+                </>
+              )}
+            </button>
+          </section>
+        )}
 
-      {calculateResult && (
-        <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-          <h2 className="text-base font-semibold">Macros</h2>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="text-left text-neutral-500">
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Item
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Grams
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Calories
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Protein
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Carbs
-                  </th>
-                  <th className="border-b border-neutral-200 pb-2 font-medium dark:border-neutral-800">
-                    Fat
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {calculateResult.items.map((item) => (
-                  <tr key={item.name}>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.name}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.grams}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.calories}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.protein}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.carbs}
-                    </td>
-                    <td className="border-b border-neutral-100 py-2 dark:border-neutral-800">
-                      {item.fat}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td className="pt-2 font-semibold">Total</td>
-                  <td className="pt-2"></td>
-                  <td className="pt-2 font-semibold">
-                    {calculateResult.total_calories}
-                  </td>
-                  <td className="pt-2 font-semibold">
-                    {calculateResult.total_protein}
-                  </td>
-                  <td className="pt-2 font-semibold">
-                    {calculateResult.total_carbs}
-                  </td>
-                  <td className="pt-2 font-semibold">
-                    {calculateResult.total_fat}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </section>
-      )}
+        {calculateResult && (
+          <section className="card mt-6 animate-rise">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-semibold">Macros</h2>
+              <span className="eyebrow">This meal</span>
+            </div>
+            <div className="mt-4 flex items-end gap-2">
+              <span className="text-5xl font-semibold tabular-nums tracking-tight">
+                {calculateResult.total_calories}
+              </span>
+              <span className="pb-1.5 text-sm text-neutral-400">kcal</span>
+            </div>
+            <div className="mt-5">
+              <MacroBar
+                protein={calculateResult.total_protein}
+                carbs={calculateResult.total_carbs}
+                fat={calculateResult.total_fat}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-4">
+              <MacroStat label="Protein" value={calculateResult.total_protein} dot="bg-protein" />
+              <MacroStat label="Carbs" value={calculateResult.total_carbs} dot="bg-carbs" />
+              <MacroStat label="Fat" value={calculateResult.total_fat} dot="bg-fat" />
+            </div>
 
-      {session && (
-        <>
-          <DailySummary stats={dailyStats} loading={statsLoading} />
-          <MealHistory meals={meals} loading={mealsLoading} />
-        </>
-      )}
+            <div className="mt-6 overflow-x-auto">
+              <table className="w-full text-sm tabular-nums">
+                <thead>
+                  <tr className="text-left text-xs text-neutral-400 [&>th]:pb-2 [&>th]:font-medium">
+                    <th>Item</th>
+                    <th className="text-right">Grams</th>
+                    <th className="text-right">kcal</th>
+                    <th className="text-right">P</th>
+                    <th className="text-right">C</th>
+                    <th className="text-right">F</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 border-t border-neutral-100 dark:divide-white/[0.06] dark:border-white/[0.06]">
+                  {calculateResult.items.map((item) => (
+                    <tr key={item.name} className="[&>td]:py-2.5 [&>td:not(:first-child)]:pl-3 [&>td:not(:first-child)]:text-right">
+                      <td className="capitalize">{item.name}</td>
+                      <td className="text-neutral-500 dark:text-neutral-400">{item.grams}</td>
+                      <td>{item.calories}</td>
+                      <td className="text-neutral-500 dark:text-neutral-400">{item.protein}</td>
+                      <td className="text-neutral-500 dark:text-neutral-400">{item.carbs}</td>
+                      <td className="text-neutral-500 dark:text-neutral-400">{item.fat}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {session && (
+          <>
+            <DailySummary stats={dailyStats} loading={statsLoading} />
+            <MealHistory meals={meals} loading={mealsLoading} />
+          </>
+        )}
+      </main>
     </div>
   );
 }
