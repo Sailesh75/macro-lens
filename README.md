@@ -6,7 +6,7 @@ item — in grams. The app never guesses portion size; instead it remembers
 your typical portions per food and pre-fills them next time, so logging gets
 faster the more you use it.
 
-**Live app:** https://frontend-sigma-liart-68.vercel.app
+**Live app:** https://macro-lens-scan-ai.vercel.app
 **API:** https://ai-macro-logger-prod.onrender.com/docs
 
 ---
@@ -162,7 +162,7 @@ details: [backend/README.md](backend/README.md) ·
 | Environment | Branch    | Frontend (Vercel)                  | Backend (Render)                  |
 | ----------- | --------- | ---------------------------------- | --------------------------------- |
 | Staging     | `staging` | frontend-git-staging-…vercel.app   | ai-macro-logger.onrender.com      |
-| Production  | `master`  | frontend-sigma-liart-68.vercel.app | ai-macro-logger-prod.onrender.com |
+| Production  | `master`  | macro-lens-scan-ai.vercel.app | ai-macro-logger-prod.onrender.com |
 
 Feature branches → PR into `staging` → CI runs → merge → auto-deploys to
 staging (Vercel/Render's native git integration, not custom deploy scripts).
