@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "./supabaseClient";
+import { ArrowRightIcon, Backdrop, Brand, GoogleIcon, LogoMark, Spinner } from "./ui";
 
 type Mode = "login" | "signup";
 
@@ -50,99 +51,127 @@ export function Auth({ onGuestContinue }: Props) {
     if (error) setError(error.message);
   }
 
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setMessage(null);
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-center text-xl font-semibold tracking-tight">
-          MacroLens
-        </h1>
+    <div className="flex min-h-svh flex-col px-4">
+      <Backdrop />
 
-        <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-          <h2 className="text-base font-semibold">
-            {mode === "login" ? "Log in" : "Sign up"}
-          </h2>
+      <header className="mx-auto flex h-16 w-full max-w-5xl items-center">
+        <Brand />
+      </header>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
-            <input
-              type="email"
-              placeholder="Email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              autoComplete={
-                mode === "signup" ? "new-password" : "current-password"
-              }
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
-              required
-              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-            >
-              {loading
-                ? "Please wait..."
-                : mode === "login"
-                  ? "Log in"
-                  : "Sign up"}
-            </button>
-          </form>
-
-          {message && (
-            <p className="mt-3 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-              {message}
+      <main className="flex flex-1 items-center justify-center pb-16">
+        <div className="w-full max-w-sm animate-rise">
+          <div className="text-center">
+            {/* Lens motif: the logo mark inside a slowly rotating accent ring. */}
+            <div className="relative mx-auto grid size-16 place-items-center">
+              <div className="absolute inset-0 animate-spin-slow rounded-full bg-[conic-gradient(from_0deg,transparent_0deg,var(--color-accent)_90deg,transparent_180deg)] opacity-70" />
+              <div className="absolute inset-[3px] rounded-full bg-neutral-50 dark:bg-neutral-950" />
+              <LogoMark className="relative size-9" />
+            </div>
+            <h1 className="mt-6 text-4xl font-semibold tracking-tight">
+              Every bite,{" "}
+              <span className="font-display font-normal italic">measured.</span>
+            </h1>
+            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+              Snap, type or say what you ate. Get the macros.
             </p>
-          )}
-          {error && (
-            <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-400">
-              {error}
-            </p>
-          )}
+          </div>
+
+          <section className="card mt-8">
+            <div className="segmented flex w-full [&>button]:flex-1 [&>button]:justify-center">
+              <button
+                type="button"
+                aria-pressed={mode === "login"}
+                onClick={() => switchMode("login")}
+              >
+                Log in
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode === "signup"}
+                onClick={() => switchMode("signup")}
+              >
+                Sign up
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-3">
+              <input
+                type="email"
+                placeholder="you@example.com"
+                aria-label="Email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="input"
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                aria-label="Password"
+                autoComplete={
+                  mode === "signup" ? "new-password" : "current-password"
+                }
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={6}
+                required
+                className="input"
+              />
+              <div className="mt-1 flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  aria-label="Sign in with Google"
+                  title="Sign in with Google"
+                  className="btn-ghost w-11 shrink-0 px-0"
+                >
+                  <GoogleIcon />
+                </button>
+                <button type="submit" disabled={loading} className="btn-primary group flex-1">
+                  {loading ? (
+                    <>
+                      <Spinner /> Please wait
+                    </>
+                  ) : (
+                    <>
+                      {mode === "login" ? "Log in" : "Create account"}
+                      <ArrowRightIcon className="size-4 transition group-hover:translate-x-0.5" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {message && (
+              <p className="mt-4 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+                {message}
+              </p>
+            )}
+            {error && (
+              <p className="mt-4 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-400/10 dark:text-red-300">
+                {error}
+              </p>
+            )}
+          </section>
 
           <button
             type="button"
-            className="mt-3 text-sm text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
-            onClick={() => {
-              setMode(mode === "login" ? "signup" : "login");
-              setError(null);
-              setMessage(null);
-            }}
-          >
-            {mode === "login"
-              ? "Need an account? Sign up"
-              : "Already have an account? Log in"}
-          </button>
-
-          <hr className="my-4 border-neutral-200 dark:border-neutral-800" />
-
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-          >
-            Continue with Google
-          </button>
-
-          <hr className="my-4 border-neutral-200 dark:border-neutral-800" />
-
-          <button
-            type="button"
-            className="text-sm text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
+            className="link-muted group mx-auto mt-6 flex items-center gap-1.5"
             onClick={onGuestContinue}
           >
             Try it without an account
+            <ArrowRightIcon className="size-3.5 transition group-hover:translate-x-0.5" />
           </button>
-        </section>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

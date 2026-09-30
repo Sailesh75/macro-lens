@@ -28,9 +28,9 @@ export function MealHistory({ meals, loading }: Props) {
     : meals.filter((meal) => toLocalDateString(new Date(meal.created_at)) === selectedDate);
 
   return (
-    <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-200 dark:bg-neutral-900 dark:ring-neutral-800">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">Meal history</h2>
+    <section className="card mt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-semibold">History</h2>
         <div className="flex items-center gap-2">
           <input
             type="date"
@@ -39,52 +39,92 @@ export function MealHistory({ meals, loading }: Props) {
               setSelectedDate(e.target.value);
               setShowAll(false);
             }}
-            className="rounded-lg border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+            aria-label="Date"
+            className="input-sm text-xs"
           />
           <button
             type="button"
             onClick={() => setShowAll((prev) => !prev)}
-            className="text-sm text-neutral-500 underline decoration-neutral-300 underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
+            aria-pressed={showAll}
+            className={`h-9 rounded-lg px-3 text-xs font-medium transition ${
+              showAll
+                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-white"
+            }`}
           >
-            {showAll ? "Show selected date only" : "Show all"}
+            All
           </button>
         </div>
       </div>
 
-      {loading && <p className="mt-2 text-sm italic text-neutral-400">Loading...</p>}
+      {loading && (
+        <div className="mt-4 space-y-3">
+          {[0, 1].map((i) => (
+            <div key={i} className="h-14 animate-pulse rounded-xl bg-neutral-200/70 dark:bg-white/[0.06]" />
+          ))}
+        </div>
+      )}
       {!loading && meals.length === 0 && (
-        <p className="mt-2 text-sm italic text-neutral-400">No meals logged yet.</p>
+        <p className="mt-6 pb-2 text-center text-sm text-neutral-400">No meals logged yet.</p>
       )}
       {!loading && meals.length > 0 && visibleMeals.length === 0 && (
-        <p className="mt-2 text-sm italic text-neutral-400">No meals logged on this date.</p>
+        <p className="mt-6 pb-2 text-center text-sm text-neutral-400">Nothing logged on this date.</p>
       )}
-      {!loading &&
-        visibleMeals.map((meal) => (
-          <div
-            key={meal.id}
-            className="border-b border-neutral-100 py-3 last:border-none dark:border-neutral-800"
-          >
-            <div className="flex justify-between text-sm">
-              <span>{new Date(meal.created_at).toLocaleString()}</span>
-              <span className="italic text-neutral-400">{meal.status}</span>
-            </div>
-            <ul className="mt-1 list-disc pl-5 text-sm text-neutral-600 dark:text-neutral-300">
-              {meal.items.map((item) => (
-                <li key={item.id}>
-                  {item.food_name}
-                  {item.grams != null ? ` — ${item.grams}g` : " — grams not entered yet"}
-                  {item.calories != null ? ` (${item.calories} kcal)` : ""}
-                </li>
-              ))}
-            </ul>
-            {meal.status === "done" && (
-              <p className="mt-1 text-sm">
-                Total: {meal.total_calories} kcal &middot; {meal.total_protein}g protein &middot;{" "}
-                {meal.total_carbs}g carbs &middot; {meal.total_fat}g fat
+      {!loading && visibleMeals.length > 0 && (
+        <ul className="mt-2 divide-y divide-neutral-100 dark:divide-white/[0.06]">
+          {visibleMeals.map((meal) => (
+            <li key={meal.id} className="py-4">
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {new Date(meal.created_at).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+                {meal.status === "done" ? (
+                  <span className="text-sm font-semibold tabular-nums">
+                    {meal.total_calories}
+                    <span className="ml-0.5 font-normal text-neutral-400"> kcal</span>
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400">
+                    {meal.status}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm capitalize">
+                {meal.items.map((item, i) => (
+                  <span key={item.id}>
+                    {i > 0 && <span className="text-neutral-300 dark:text-neutral-600">, </span>}
+                    {item.food_name}
+                    <span className="normal-case text-neutral-400">
+                      {item.grams != null ? ` ${item.grams}g` : " (no grams)"}
+                    </span>
+                  </span>
+                ))}
               </p>
-            )}
-          </div>
-        ))}
+              {meal.status === "done" && (
+                <p className="mt-1.5 flex gap-3 text-xs tabular-nums text-neutral-500 dark:text-neutral-400">
+                  <span className="flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-protein" />
+                    {meal.total_protein}g
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-carbs" />
+                    {meal.total_carbs}g
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-fat" />
+                    {meal.total_fat}g
+                  </span>
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
