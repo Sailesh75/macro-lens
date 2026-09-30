@@ -10,7 +10,7 @@ pre-filled) → enter/confirm grams → see computed macros.
 | Environment | Branch | URL |
 |---|---|---|
 | Staging | `staging` | https://frontend-git-staging-saileshs-projects-d22c8616.vercel.app |
-| Production | `master` | https://frontend-sigma-liart-68.vercel.app |
+| Production | `master` | https://macro-lens-scan-ai.vercel.app |
 
 Both point at their matching Render backend (see `backend/README.md`) and
 the same shared Supabase project. Vercel's Deployment Protection (a login
