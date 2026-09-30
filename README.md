@@ -2,7 +2,7 @@
 
 A meal-logging app where you photograph (or describe) a meal, an AI vision
 pipeline identifies _what's_ on the plate, and you enter _how much_ of each
-item — in grams. The app never guesses portion size; instead it remembers
+item in grams. The app never guesses portion size; instead it remembers
 your typical portions per food and pre-fills them next time, so logging gets
 faster the more you use it.
 
